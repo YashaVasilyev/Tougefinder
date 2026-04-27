@@ -154,12 +154,10 @@ function App() {
       {/* Header - Fixed on mobile, part of sidebar on desktop */}
       <header className="absolute top-0 left-0 right-0 z-[1002] p-4 md:p-6 pointer-events-none">
         <div className="w-full flex justify-between items-center">
-          <div className="flex items-center gap-3 pointer-events-auto">
-            <div className="w-10 h-10 bg-touge-600 rounded-xl flex items-center justify-center shadow-lg shadow-touge-900/50 rotate-3">
-              <Navigation className="text-white w-6 h-6 fill-white" />
-            </div>
+          <div className="flex items-center gap-4 pointer-events-auto">
+            <img src="/logo.png" alt="Touge Finder Logo" className="w-14 h-14 object-contain filter drop-shadow-lg" />
             <div>
-              <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white drop-shadow-md">TOUGE FINDER</h1>
+              <h1 className="text-xl md:text-2xl font-black tracking-tighter text-white drop-shadow-md italic">TOUGE FINDER</h1>
               <p className="text-[10px] text-zinc-400 tracking-widest font-semibold uppercase">Discovery Engine</p>
             </div>
           </div>

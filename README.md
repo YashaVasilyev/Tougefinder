@@ -2,7 +2,7 @@
 
 **Touge Finder** is a high-performance discovery engine designed to find the world's best technical driving roads. Built for driving enthusiasts, it moves beyond simple maps to analyze the actual geometry and "flow" of mountain passes and backroads.
 
-![Touge Finder Icon](public/icon-192.png)
+![Touge Finder Icon](public/logo.png)
 
 ## 🌟 Key Features
 

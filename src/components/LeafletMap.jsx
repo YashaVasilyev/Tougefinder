@@ -8,10 +8,10 @@ import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
 let DefaultIcon = L.icon({
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41]
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
@@ -44,9 +44,9 @@ const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center }) => {
 
   return (
     <div className="w-full h-full relative bg-zinc-950">
-      <MapContainer 
-        center={center ? [center.lat, center.lon] : [40.7128, -74.006]} 
-        zoom={zoom} 
+      <MapContainer
+        center={center ? [center.lat, center.lon] : [40.7128, -74.006]}
+        zoom={zoom}
         scrollWheelZoom={!isMobile}
         dragging={true}
         tap={false}
@@ -59,7 +59,7 @@ const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center }) => {
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           maxZoom={20}
         />
-        
+
         <ZoomControl position="bottomright" />
         <ChangeView center={center} zoom={zoom} />
 
@@ -80,9 +80,9 @@ const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center }) => {
         ))}
 
         {selectedRoad && selectedRoad.coordinates && selectedRoad.coordinates[0] && (
-          <ChangeView 
-            center={{ lat: selectedRoad.coordinates[0][1], lon: selectedRoad.coordinates[0][0] }} 
-            zoom={14} 
+          <ChangeView
+            center={{ lat: selectedRoad.coordinates[0][1], lon: selectedRoad.coordinates[0][0] }}
+            zoom={14}
           />
         )}
       </MapContainer>

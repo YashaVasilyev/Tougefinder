@@ -11,34 +11,28 @@ const MIRRORS = [
 
 export const fetchRoads = async (lat, lon, radiusKm = 10) => {
   const radiusMeters = radiusKm * 1000;
-  let lastError = null;
+  
+  const query = `[out:json][timeout:25];(way(around:${radiusMeters},${lat},${lon})[highway~"^(tertiary|unclassified|secondary|primary)$"];node(around:${radiusMeters},${lat},${lon})[highway=stop];);out body;>;out skel qt;`;
+  
+  // Call our own Vercel Proxy to bypass CORS
+  const url = `/api/overpass?data=${encodeURIComponent(query)}`;
 
-  for (const baseUrl of MIRRORS) {
-    const query = `[out:json][timeout:25];(way(around:${radiusMeters},${lat},${lon})[highway~"^(tertiary|unclassified|secondary|primary)$"];node(around:${radiusMeters},${lat},${lon})[highway=stop];);out body;>;out skel qt;`;
-    
-    // Using GET with URL parameters is more compatible with browser-based fetch/CORS
-    const url = `${baseUrl}?data=${encodeURIComponent(query)}`;
+  try {
+    const response = await fetch(url);
 
-    try {
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        console.warn(`Mirror ${baseUrl} returned ${response.status}`);
-        continue;
-      }
-
-      const data = await response.json();
-      if (!data || !data.elements) continue;
-      
-      console.log(`Fetched from ${baseUrl}: ${data.elements.length} elements`);
-      return processOverpassData(data);
-    } catch (error) {
-      lastError = error;
-      console.warn(`Mirror ${baseUrl} failed: ${error.message}`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Proxy returned ${response.status}`);
     }
-  }
 
-  throw lastError || new Error('All Overpass mirrors timed out.');
+    const data = await response.json();
+    if (!data || !data.elements) throw new Error('Invalid data format received');
+    
+    return processOverpassData(data);
+  } catch (error) {
+    console.error('Overpass fetch failed:', error);
+    throw error;
+  }
 };
 
 /**

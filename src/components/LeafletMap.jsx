@@ -8,10 +8,10 @@ import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
 let DefaultIcon = L.icon({
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41]
+    iconUrl: markerIcon,
+    shadowUrl: markerShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
@@ -44,22 +44,23 @@ const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center }) => {
 
   return (
     <div className="w-full h-full relative bg-zinc-950">
-      <MapContainer
-        center={center ? [center.lat, center.lon] : [40.7128, -74.006]}
-        zoom={zoom}
+      <MapContainer 
+        center={center ? [center.lat, center.lon] : [40.7128, -74.006]} 
+        zoom={zoom} 
         scrollWheelZoom={!isMobile}
         dragging={true}
         tap={false}
         className="w-full h-full"
         zoomControl={false}
       >
-        {/* Base dark tile layer — CartoDB Dark Matter is free and doesn't require an API key */}
+        {/* Base topo layer — ESRI World Topo provides geometry and blue water, darkened via CSS filter */}
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://www.esri.com/">Esri</a>, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
+          className="map-tiles-dark"
           maxZoom={20}
         />
-
+        
         <ZoomControl position="bottomright" />
         <ChangeView center={center} zoom={zoom} />
 
@@ -80,9 +81,9 @@ const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center }) => {
         ))}
 
         {selectedRoad && selectedRoad.coordinates && selectedRoad.coordinates[0] && (
-          <ChangeView
-            center={{ lat: selectedRoad.coordinates[0][1], lon: selectedRoad.coordinates[0][0] }}
-            zoom={14}
+          <ChangeView 
+            center={{ lat: selectedRoad.coordinates[0][1], lon: selectedRoad.coordinates[0][0] }} 
+            zoom={14} 
           />
         )}
       </MapContainer>

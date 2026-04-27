@@ -24,7 +24,11 @@ const RoadDetail = ({ road, onClose }) => {
       setLoading(false);
     };
     loadElevation();
+    setIsReversed(false); // Reset to forward when road changes
   }, [road]);
+
+  const startDir = getCardinalDirection(road.coordinates[0], road.coordinates[road.coordinates.length - 1]);
+  const endDir = getCardinalDirection(road.coordinates[road.coordinates.length - 1], road.coordinates[0]);
 
   const handleOpenMaps = () => {
     const [lon, lat] = road.coordinates[0];
@@ -99,10 +103,7 @@ const RoadDetail = ({ road, onClose }) => {
                 className="flex items-center gap-1.5 text-[10px] font-bold text-touge-400 uppercase bg-touge-400/10 px-2 py-1 rounded-lg hover:bg-touge-400/20 transition-colors"
               >
                 <ArrowRightLeft className="w-3 h-3" />
-                {getCardinalDirection(road.coordinates[0], road.coordinates[road.coordinates.length - 1])}
-                {' → '}
-                {getCardinalDirection(road.coordinates[road.coordinates.length - 1], road.coordinates[0])}
-                {isReversed && ' (Rev)'}
+                {isReversed ? `${endDir} → ${startDir}` : `${startDir} → ${endDir}`}
               </button>
             </div>
 

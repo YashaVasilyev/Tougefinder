@@ -61,9 +61,8 @@ export const generatePacenotes = (coordinates, options = {}) => {
       else grade = '6';
 
       const distStr = accumulatedDistance > 10 ? `${Math.round(accumulatedDistance / 10) * 10}m: ` : '';
-      const turnStr = format === 'descriptive' 
-        ? `${descriptiveMap[grade]} ${directionMap[dirKey]}`
-        : `${grade}${directionMap[dirKey]}`;
+      const displayGrade = (format === 'rally' && grade === 'Hairpin') ? 'HP' : (format === 'descriptive' ? descriptiveMap[grade] : grade);
+      const turnStr = `${displayGrade} ${directionMap[dirKey]}`;
 
       notes.push(`${distStr}${turnStr}`);
       accumulatedDistance = 0;

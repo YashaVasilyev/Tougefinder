@@ -25,8 +25,8 @@ function App() {
   
   // Custom thresholds
   const [minScore, setMinScore] = useState(30);
-  const [minLength, setMinLength] = useState(0.25);
-  const [maxHouseDensity, setMaxHouseDensity] = useState(25); // Loosened
+  const [minLength, setMinLength] = useState(2);
+  const [maxHouseDensity, setMaxHouseDensity] = useState(15);
 
   // Load cached roads on mount
   useEffect(() => {

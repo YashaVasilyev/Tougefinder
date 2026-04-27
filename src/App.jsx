@@ -57,7 +57,7 @@ function App() {
         setLocation(defaultLoc);
         searchNear(defaultLoc.lat, defaultLoc.lon);
         setError("Geolocation too slow. Defaulting to Boston.");
-      }, 5000);
+      }, 15000);
 
       navigator.geolocation.getCurrentPosition(
         (position) => {

@@ -9,10 +9,10 @@ import * as turf from '@turf/turf';
  */
 
 export const calculateScores = (roads, thresholds = {}) => {
-  const { 
-    minScore = 30, 
-    minLength = 0.25, 
-    maxHouseDensity = 25 
+  const {
+    minScore = 30,
+    minLength = 0.25,
+    maxHouseDensity = 25
   } = thresholds;
 
   return roads.map(road => {
@@ -38,11 +38,11 @@ export const calculateScores = (roads, thresholds = {}) => {
     const distances = [0];
     const bearings = [];
     for (let i = 0; i < coords.length - 1; i++) {
-      distances.push(distances[i] + turf.distance(coords[i], coords[i+1], { units: 'miles' }));
-      bearings.push(turf.bearing(coords[i], coords[i+1]));
+      distances.push(distances[i] + turf.distance(coords[i], coords[i + 1], { units: 'miles' }));
+      bearings.push(turf.bearing(coords[i], coords[i + 1]));
     }
 
-    const stride = coords.length > 500 ? 5 : 2; 
+    const stride = coords.length > 500 ? 5 : 2;
     for (let i = 0; i < coords.length - 3; i += stride) {
       const startDist = distances[i];
       let j = i + 1;
@@ -50,11 +50,11 @@ export const calculateScores = (roads, thresholds = {}) => {
       if (j - i >= 3) {
         let windowTotalBearingChange = 0;
         for (let k = i; k < j - 2; k++) {
-          let diff = Math.abs(bearings[k+1] - bearings[k]);
+          let diff = Math.abs(bearings[k + 1] - bearings[k]);
           if (diff > 180) diff = 360 - diff;
           windowTotalBearingChange += diff;
         }
-        const windowLength = distances[j-1] - startDist;
+        const windowLength = distances[j - 1] - startDist;
         const intensity = windowTotalBearingChange / (windowLength || 0.1);
         if (intensity > maxCurvatureIntensity) maxCurvatureIntensity = intensity;
       }
@@ -92,8 +92,8 @@ const calculateCurvature = (coordinates) => {
   // Kept for backward compatibility but internal scoring now uses pre-calculated bearings
   let totalBearingChange = 0;
   for (let i = 0; i < coordinates.length - 2; i++) {
-    const bearing1 = turf.bearing(coordinates[i], coordinates[i+1]);
-    const bearing2 = turf.bearing(coordinates[i+1], coordinates[i+2]);
+    const bearing1 = turf.bearing(coordinates[i], coordinates[i + 1]);
+    const bearing2 = turf.bearing(coordinates[i + 1], coordinates[i + 2]);
     let diff = Math.abs(bearing2 - bearing1);
     if (diff > 180) diff = 360 - diff;
     totalBearingChange += diff;

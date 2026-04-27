@@ -15,7 +15,7 @@ export const fetchRoads = async (lat, lon, radiusKm = 10) => {
 
   for (const baseUrl of MIRRORS) {
     const query = `
-      [out:json];
+      [out:json][timeout:25];
       (
         way(around:${radiusMeters}, ${lat}, ${lon})[highway~"^(tertiary|unclassified|secondary|primary)$"];
         node(around:${radiusMeters}, ${lat}, ${lon})[highway=stop];
@@ -28,7 +28,10 @@ export const fetchRoads = async (lat, lon, radiusKm = 10) => {
     try {
       const response = await fetch(baseUrl, {
         method: 'POST',
-        body: query
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: `data=${encodeURIComponent(query)}`
       });
 
       if (!response.ok) continue;
@@ -144,7 +147,7 @@ const processOverpassData = (data) => {
       for (const nodeId of currentPathNodes) {
         if (stopSigns.has(nodeId)) stopSignCount++;
         const connectedWays = nodeToWays[nodeId] || [];
-        
+
         // It's an intersection if it connects to a way that ISN'T one of our merged segments
         const externalWays = connectedWays.filter(id => !visitedWays.has(id));
         if (externalWays.length > 0) {

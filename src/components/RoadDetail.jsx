@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, ExternalLink, TrendingUp, ArrowUpRight, ArrowDownRight, Clock, Ruler, Info } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { X, ExternalLink, TrendingUp, ArrowUpRight, Clock, Ruler } from 'lucide-react';
 import { fetchElevationForRoad } from '../services/elevation';
 
 const RoadDetail = ({ road, onClose }) => {
@@ -18,103 +16,108 @@ const RoadDetail = ({ road, onClose }) => {
     loadElevation();
   }, [road]);
 
-  const chartData = elevationData?.profile.map((elevation, index) => ({
-    dist: index,
-    elevation: elevation
-  })) || [];
-
   const handleOpenMaps = () => {
     const [lon, lat] = road.coordinates[0];
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
-    window.open(url, '_blank');
+    // geo: URI is handled natively by iOS (Apple Maps) and Android (Google Maps/user choice)
+    // Falls back to Google Maps on desktop browsers
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
+
+    if (isIOS) {
+      // iOS: opens Apple Maps by default, user can choose others
+      window.location.href = `maps://maps.apple.com/?daddr=${lat},${lon}`;
+    } else if (isAndroid) {
+      // Android: opens the user's default map app via geo intent
+      window.location.href = `geo:${lat},${lon}?q=${lat},${lon}`;
+    } else {
+      // Desktop: open Google Maps in new tab
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`, '_blank');
+    }
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 100 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 100 }}
-      className="fixed inset-x-0 bottom-0 top-[10%] md:top-auto md:bottom-6 md:left-auto md:right-6 md:w-[450px] z-[1003] glass-dark rounded-t-[40px] md:rounded-[40px] shadow-2xl overflow-hidden flex flex-col border-t border-white/20"
+    // Mobile: slides up from bottom covering ~33% of screen
+    // Desktop: floats as a card on the bottom-right
+    <div className="fixed inset-x-0 bottom-0 md:bottom-6 md:left-auto md:right-6 md:w-[420px] md:inset-x-auto z-[1003] flex flex-col"
+      style={{ maxHeight: '67vh' }}
     >
-      {/* Header */}
-      <div className="p-8 pb-4 flex justify-between items-start">
-        <div>
-          <h2 className="text-3xl font-bold mb-1 tracking-tight">{road.name}</h2>
-          <div className="flex gap-2 items-center">
-            <span className="px-3 py-1 bg-touge-600 rounded-full text-xs font-bold uppercase tracking-widest">
-              Score {road.totalScore}
-            </span>
-            <span className="text-zinc-400 text-sm font-medium">{road.type} road</span>
-          </div>
-        </div>
-        <button 
-          onClick={onClose}
-          className="p-3 bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/10"
-        >
-          <X className="w-6 h-6" />
-        </button>
+      {/* Pull handle (mobile only) */}
+      <div className="flex justify-center pb-2 md:hidden">
+        <div className="w-10 h-1 bg-white/20 rounded-full" />
       </div>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar p-8 pt-0 space-y-8">
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 gap-4">
-          <StatCard icon={<Ruler className="text-touge-400" />} label="Length" value={`${road.lengthMiles} mi`} />
-          <StatCard icon={<TrendingUp className="text-blue-400" />} label="Avg Grade" value={elevationData ? `${elevationData.avgGrade}%` : '...'} />
-          <StatCard icon={<ArrowUpRight className="text-green-400" />} label="Ascent" value={elevationData ? `${elevationData.gain} ft` : '...'} />
-          <StatCard icon={<Clock className="text-yellow-400" />} label="Est. Time" value="~12 min" />
+      <div className="glass-dark rounded-t-[28px] md:rounded-[28px] shadow-2xl border border-white/10 flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="px-6 pt-5 pb-3 flex justify-between items-start flex-shrink-0">
+          <div className="flex-1 min-w-0 pr-3">
+            <h2 className="text-xl font-bold tracking-tight truncate">{road.name}</h2>
+            <div className="flex gap-2 items-center mt-1">
+              <span className="px-2.5 py-0.5 bg-touge-600 rounded-full text-xs font-bold uppercase tracking-widest">
+                Score {road.totalScore}
+              </span>
+              <span className="text-zinc-400 text-xs font-medium capitalize">{road.type}</span>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/10 flex-shrink-0"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Elevation Chart */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-end">
-            <h3 className="text-lg font-bold">Elevation Profile</h3>
-            <span className="text-xs text-zinc-500 font-mono">Gain: {elevationData?.gain} ft / Loss: {elevationData?.loss} ft</span>
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-6 pb-5 space-y-4">
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard icon={<Ruler className="w-4 h-4 text-touge-400" />} label="Length" value={`${road.lengthMiles} mi`} />
+            <StatCard icon={<TrendingUp className="w-4 h-4 text-blue-400" />} label="Avg Grade" value={elevationData ? `${elevationData.avgGrade}%` : '—'} />
+            <StatCard icon={<ArrowUpRight className="w-4 h-4 text-green-400" />} label="Ascent" value={elevationData ? `${elevationData.gain} ft` : '—'} />
+            <StatCard icon={<Clock className="w-4 h-4 text-yellow-400" />} label="Curvature" value={road.maxIntensity ? `${road.maxIntensity}°/mi` : '—'} />
           </div>
-          <div className="h-48 w-full bg-black/40 rounded-3xl p-4 border border-white/5">
-            {loading ? (
-              <div className="h-full w-full flex items-center justify-center">
-                <div className="w-8 h-8 border-2 border-touge-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="colorElev" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f83b3b" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#f83b3b" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <Area type="monotone" dataKey="elevation" stroke="#f83b3b" strokeWidth={2} fillOpacity={1} fill="url(#colorElev)" />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px' }}
-                    itemStyle={{ color: '#fff' }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
 
-        {/* Action Button */}
-        <button 
-          onClick={handleOpenMaps}
-          className="w-full btn-primary flex items-center justify-center gap-3 py-5 text-lg group"
-        >
-          <ExternalLink className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-          Navigate to Start
-        </button>
+          {/* Score Breakdown */}
+          <div className="bg-white/5 rounded-2xl p-4 border border-white/5 space-y-2">
+            <ScoreBar label="Curvature" value={road.curvatureScore} max={60} color="bg-red-500" />
+            <ScoreBar label="Flow" value={road.flowScore} max={40} color="bg-blue-500" />
+          </div>
+
+          {/* Navigate Button */}
+          <button
+            onClick={handleOpenMaps}
+            className="w-full btn-primary flex items-center justify-center gap-2 py-4 text-base group"
+          >
+            <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            Navigate to Start
+          </button>
+        </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
 
 const StatCard = ({ icon, label, value }) => (
-  <div className="bg-white/5 rounded-3xl p-5 border border-white/5 flex flex-col gap-2">
-    <div className="flex items-center gap-2">
+  <div className="bg-white/5 rounded-2xl p-4 border border-white/5 flex flex-col gap-1">
+    <div className="flex items-center gap-1.5">
       {icon}
       <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{label}</span>
     </div>
-    <span className="text-xl font-bold tracking-tight">{value}</span>
+    <span className="text-lg font-bold tracking-tight">{value}</span>
+  </div>
+);
+
+const ScoreBar = ({ label, value, max, color }) => (
+  <div className="space-y-1">
+    <div className="flex justify-between text-xs text-zinc-400 font-medium">
+      <span>{label}</span>
+      <span>{value}/{max}</span>
+    </div>
+    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+      <div
+        className={`h-full ${color} rounded-full transition-all duration-500`}
+        style={{ width: `${(value / max) * 100}%` }}
+      />
+    </div>
   </div>
 );
 

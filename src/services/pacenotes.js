@@ -83,6 +83,7 @@ export const generatePacenotes = (coordinates, reverse = false) => {
 export const getCardinalDirection = (p1, p2) => {
   const bearing = turf.bearing(p1, p2);
   const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-  const index = Math.round(((bearing %= 360) < 0 ? bearing + 360 : bearing) / 45) % 8;
+  const normalized = ((bearing % 360) + 360) % 360;
+  const index = Math.round(normalized / 45) % 8;
   return directions[index];
 };

@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { X, ExternalLink, TrendingUp, ArrowUpRight, Clock, Ruler } from 'lucide-react';
+import { X, ExternalLink, TrendingUp, ArrowUpRight, Clock, Ruler, Clipboard, Check, ArrowRightLeft } from 'lucide-react';
 import { fetchElevationForRoad } from '../services/elevation';
+import { generatePacenotes, getCardinalDirection } from '../services/pacenotes';
 
 const RoadDetail = ({ road, onClose }) => {
   const [elevationData, setElevationData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isReversed, setIsReversed] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const loadElevation = async () => {
@@ -78,6 +81,48 @@ const RoadDetail = ({ road, onClose }) => {
           <div className="bg-white/5 rounded-2xl p-4 border border-white/5 space-y-2">
             <ScoreBar label="Curvature" value={road.curvatureScore} max={60} color="bg-red-500" />
             <ScoreBar label="Flow" value={road.flowScore} max={40} color="bg-blue-500" />
+          </div>
+
+          {/* Pacenotes Section */}
+          <div className="bg-zinc-900/50 rounded-2xl p-4 border border-white/5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Pacenotes</h3>
+              <button 
+                onClick={() => setIsReversed(!isReversed)}
+                className="flex items-center gap-1.5 text-[10px] font-bold text-touge-400 uppercase bg-touge-400/10 px-2 py-1 rounded-lg hover:bg-touge-400/20 transition-colors"
+              >
+                <ArrowRightLeft className="w-3 h-3" />
+                {getCardinalDirection(road.coordinates[0], road.coordinates[road.coordinates.length - 1])}
+                {' → '}
+                {getCardinalDirection(road.coordinates[road.coordinates.length - 1], road.coordinates[0])}
+                {isReversed && ' (Rev)'}
+              </button>
+            </div>
+
+            <button
+              onClick={() => {
+                const notes = generatePacenotes(road.coordinates, isReversed);
+                navigator.clipboard.writeText(notes);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4 text-green-400" />
+                  <span className="text-green-400">Copied to Clipboard</span>
+                </>
+              ) : (
+                <>
+                  <Clipboard className="w-4 h-4 text-zinc-400" />
+                  <span>Generate & Copy Pacenotes</span>
+                </>
+              )}
+            </button>
+            <p className="text-[10px] text-zinc-500 text-center leading-relaxed italic">
+              "Rally style: 1 is tight, 6 is slight. Distances in meters."
+            </p>
           </div>
 
           {/* Navigate Button */}

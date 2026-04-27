@@ -30,21 +30,28 @@ function App() {
 
   // Load cached roads on mount
   useEffect(() => {
-    const cached = localStorage.getItem('touge_roads');
-    if (cached) {
-      try {
-        setRoads(JSON.parse(cached));
-      } catch (e) {
-        localStorage.removeItem('touge_roads');
+    try {
+      const cached = localStorage.getItem('touge_roads');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) setRoads(parsed);
       }
+    } catch (e) {
+      localStorage.removeItem('touge_roads');
     }
     handleAutoDetect();
   }, []);
 
-  // Update cache when roads change
+  // Cache roads — strip heavy GeoJSON objects before saving to avoid mobile storage crashes
   useEffect(() => {
     if (roads.length > 0) {
-      localStorage.setItem('touge_roads', JSON.stringify(roads));
+      try {
+        const stripped = roads.map(({ lineString, ...rest }) => rest);
+        localStorage.setItem('touge_roads', JSON.stringify(stripped));
+      } catch (e) {
+        // Storage quota exceeded on mobile — clear and move on
+        localStorage.removeItem('touge_roads');
+      }
     }
   }, [roads]);
 

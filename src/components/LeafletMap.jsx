@@ -20,10 +20,13 @@ const ChangeView = ({ center, zoom }) => {
   const map = useMap();
   useEffect(() => {
     if (center) {
-      map.flyTo([center.lat, center.lon], zoom, {
-        animate: true,
-        duration: 1.5
-      });
+      const isMobile = window.innerWidth < 768;
+      if (isMobile) {
+        // setView is instant and safe on mobile — flyTo can crash low-RAM devices
+        map.setView([center.lat, center.lon], zoom);
+      } else {
+        map.flyTo([center.lat, center.lon], zoom, { animate: true, duration: 1.5 });
+      }
     }
   }, [center, zoom, map]);
   return null;
@@ -31,6 +34,7 @@ const ChangeView = ({ center, zoom }) => {
 
 const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center }) => {
   const [zoom, setZoom] = useState(13);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
   const getScoreColor = (score) => {
     if (score >= 80) return '#ef4444'; // Red
@@ -43,7 +47,9 @@ const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center }) => {
       <MapContainer 
         center={center ? [center.lat, center.lon] : [40.7128, -74.006]} 
         zoom={zoom} 
-        scrollWheelZoom={true}
+        scrollWheelZoom={!isMobile}
+        dragging={true}
+        tap={false}
         className="w-full h-full"
         zoomControl={false}
       >

@@ -1,9 +1,15 @@
 import * as turf from '@turf/turf';
 
-/**
- * Generates rally-style pacenotes for a given set of coordinates.
- * Coordinates are [lon, lat]
- */
+const calculateRadius = (p1, p2, p3) => {
+  const a = turf.distance(p1, p2, { units: 'meters' });
+  const b = turf.distance(p2, p3, { units: 'meters' });
+  const c = turf.distance(p1, p3, { units: 'meters' });
+  const s = (a + b + c) / 2;
+  const areaSq = s * (s - a) * (s - b) * (s - c);
+  if (areaSq <= 0) return Infinity;
+  return (a * b * c) / (4 * Math.sqrt(areaSq));
+};
+
 export const generatePacenotes = (coordinates, options = {}) => {
   const { reverse = false, format = 'rally' } = options;
   const coords = reverse ? [...coordinates].reverse() : coordinates;
@@ -19,7 +25,7 @@ export const generatePacenotes = (coordinates, options = {}) => {
   let accumulatedDistance = 0;
 
   const descriptiveMap = {
-    'Hairpin': 'Hairpin',
+    'HP': 'Hairpin',
     '1': 'Very Tight',
     '2': 'Tight',
     '3': 'Medium',
@@ -34,34 +40,37 @@ export const generatePacenotes = (coordinates, options = {}) => {
   };
 
   for (let i = 1; i < points.length - 1; i++) {
-    const p1 = points[i];
-    const p2 = points[i + 1];
+    const pPrev = points[i-1];
+    const pCurr = points[i];
+    const pNext = points[i+1];
     
-    const segmentDistance = turf.distance(points[i-1], p1, { units: 'meters' });
+    const segmentDistance = turf.distance(pPrev, pCurr, { units: 'meters' });
     accumulatedDistance += segmentDistance;
 
-    const currentBearing = turf.bearing(p1, p2);
+    const currentBearing = turf.bearing(pCurr, pNext);
     let diff = currentBearing - lastBearing;
-
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
     const absoluteDiff = Math.abs(diff);
 
-    if (absoluteDiff > 12) {
+    // Detected a turn (> 10 degrees)
+    if (absoluteDiff > 10) {
+      const radius = calculateRadius(pPrev, pCurr, pNext);
       const dirKey = diff > 0 ? 'R' : 'L';
       let grade = '';
       
-      if (absoluteDiff > 140) grade = 'Hairpin';
-      else if (absoluteDiff > 110) grade = '1';
-      else if (absoluteDiff > 80) grade = '2';
-      else if (absoluteDiff > 60) grade = '3';
-      else if (absoluteDiff > 45) grade = '4';
-      else if (absoluteDiff > 30) grade = '5';
+      // Radius-based Grading (Meters)
+      if (radius < 12) grade = 'HP';
+      else if (radius < 25) grade = '1';
+      else if (radius < 45) grade = '2';
+      else if (radius < 75) grade = '3';
+      else if (radius < 120) grade = '4';
+      else if (radius < 200) grade = '5';
       else grade = '6';
 
       const distStr = accumulatedDistance > 10 ? `${Math.round(accumulatedDistance / 10) * 10}m: ` : '';
-      const displayGrade = (format === 'rally' && grade === 'Hairpin') ? 'HP' : (format === 'descriptive' ? descriptiveMap[grade] : grade);
+      const displayGrade = format === 'descriptive' ? descriptiveMap[grade] : grade;
       const turnStr = `${displayGrade} ${directionMap[dirKey]}`;
 
       notes.push(`${distStr}${turnStr}`);

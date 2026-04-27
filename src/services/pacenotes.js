@@ -60,14 +60,22 @@ export const generatePacenotes = (coordinates, options = {}) => {
       const dirKey = diff > 0 ? 'R' : 'L';
       let grade = '';
       
-      // Radius-based Grading (Meters)
-      if (radius < 12) grade = 'HP';
-      else if (radius < 25) grade = '1';
-      else if (radius < 45) grade = '2';
-      else if (radius < 75) grade = '3';
-      else if (radius < 120) grade = '4';
-      else if (radius < 200) grade = '5';
-      else grade = '6';
+      // Updated Grading Logic
+      if (absoluteDiff > 150 && radius < 30) {
+        grade = 'HP';
+      } else if (radius < 10) {
+        grade = '1'; // Sharp
+      } else if (radius < 20) {
+        grade = '2'; // Tight
+      } else if (radius < 50) {
+        grade = '3'; // Medium
+      } else if (radius < 100) {
+        grade = '4'; // Moderate
+      } else if (radius < 180) {
+        grade = '5'; // Wide
+      } else {
+        grade = '6'; // Slight
+      }
 
       const distStr = accumulatedDistance > 10 ? `${Math.round(accumulatedDistance / 10) * 10}m: ` : '';
       const displayGrade = format === 'descriptive' ? descriptiveMap[grade] : grade;

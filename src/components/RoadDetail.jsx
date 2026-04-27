@@ -2,13 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { X, ExternalLink, TrendingUp, ArrowUpRight, Clock, Ruler, Clipboard, Check, ArrowRightLeft } from 'lucide-react';
 import { fetchElevationForRoad } from '../services/elevation';
 import { generatePacenotes, getCardinalDirection } from '../services/pacenotes';
+import { clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs) {
+  return twMerge(clsx(inputs));
+}
 
 const RoadDetail = ({ road, onClose }) => {
   const [elevationData, setElevationData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isReversed, setIsReversed] = useState(false);
-  const [noteStyle, setNoteStyle] = useState('rally'); // 'rally' or 'descriptive'
   const [copied, setCopied] = useState(false);
+  const [noteFormat, setNoteFormat] = useState('rally');
 
   useEffect(() => {
     const loadElevation = async () => {
@@ -88,26 +94,42 @@ const RoadDetail = ({ road, onClose }) => {
           <div className="bg-zinc-900/50 rounded-2xl p-4 border border-white/5 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Pacenotes</h3>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => setNoteStyle(noteStyle === 'rally' ? 'descriptive' : 'rally')}
-                  className="flex items-center gap-1.5 text-[10px] font-bold text-blue-400 uppercase bg-blue-400/10 px-2 py-1 rounded-lg hover:bg-blue-400/20 transition-colors"
-                >
-                  {noteStyle === 'rally' ? 'Rally' : 'Descriptive'}
-                </button>
-                <button 
-                  onClick={() => setIsReversed(!isReversed)}
-                  className="flex items-center gap-1.5 text-[10px] font-bold text-touge-400 uppercase bg-touge-400/10 px-2 py-1 rounded-lg hover:bg-touge-400/20 transition-colors"
-                >
-                  <ArrowRightLeft className="w-3 h-3" />
-                  {isReversed && '(Rev)'}
-                </button>
-              </div>
+              <button 
+                onClick={() => setIsReversed(!isReversed)}
+                className="flex items-center gap-1.5 text-[10px] font-bold text-touge-400 uppercase bg-touge-400/10 px-2 py-1 rounded-lg hover:bg-touge-400/20 transition-colors"
+              >
+                <ArrowRightLeft className="w-3 h-3" />
+                {getCardinalDirection(road.coordinates[0], road.coordinates[road.coordinates.length - 1])}
+                {' → '}
+                {getCardinalDirection(road.coordinates[road.coordinates.length - 1], road.coordinates[0])}
+                {isReversed && ' (Rev)'}
+              </button>
+            </div>
+
+            <div className="flex bg-black/30 p-1 rounded-xl border border-white/5">
+              <button 
+                onClick={() => setNoteFormat('rally')}
+                className={cn(
+                  "flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all",
+                  noteFormat === 'rally' ? "bg-touge-600 text-white shadow-lg" : "text-zinc-500 hover:text-zinc-400"
+                )}
+              >
+                Rally (L3)
+              </button>
+              <button 
+                onClick={() => setNoteFormat('descriptive')}
+                className={cn(
+                  "flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all",
+                  noteFormat === 'descriptive' ? "bg-touge-600 text-white shadow-lg" : "text-zinc-500 hover:text-zinc-400"
+                )}
+              >
+                Descriptive
+              </button>
             </div>
 
             <button
               onClick={() => {
-                const notes = generatePacenotes(road.coordinates, { reverse: isReversed, style: noteStyle });
+                const notes = generatePacenotes(road.coordinates, { reverse: isReversed, format: noteFormat });
                 navigator.clipboard.writeText(notes);
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
@@ -127,9 +149,9 @@ const RoadDetail = ({ road, onClose }) => {
               )}
             </button>
             <p className="text-[10px] text-zinc-500 text-center leading-relaxed italic">
-              {noteStyle === 'rally' 
-                ? "Rally style: 1 is tight, 6 is slight. Newlines added for mobile."
-                : "Descriptive style: Uses terms like 'Tight' and 'Sweeping'."}
+              {noteFormat === 'rally' 
+                ? '"1 is tight, 6 is slight. Distances in meters."' 
+                : '"Real-world terms for easier reading on the fly."'}
             </p>
           </div>
 

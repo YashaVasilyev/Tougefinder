@@ -5,7 +5,7 @@ import * as turf from '@turf/turf';
  * Coordinates are [lon, lat]
  */
 export const generatePacenotes = (coordinates, options = {}) => {
-  const { reverse = false, style = 'rally' } = options;
+  const { reverse = false, format = 'rally' } = options;
   const coords = reverse ? [...coordinates].reverse() : coordinates;
   const notes = [];
   
@@ -20,12 +20,17 @@ export const generatePacenotes = (coordinates, options = {}) => {
 
   const descriptiveMap = {
     'Hairpin': 'Hairpin',
-    '1': 'Tight',
-    '2': 'Sharp',
+    '1': 'Very Tight',
+    '2': 'Tight',
     '3': 'Medium',
     '4': 'Moderate',
-    '5': 'Sweeping',
+    '5': 'Wide',
     '6': 'Slight'
+  };
+
+  const directionMap = {
+    'R': format === 'descriptive' ? 'Right' : 'R',
+    'L': format === 'descriptive' ? 'Left' : 'L'
   };
 
   for (let i = 1; i < points.length - 1; i++) {
@@ -44,10 +49,9 @@ export const generatePacenotes = (coordinates, options = {}) => {
     const absoluteDiff = Math.abs(diff);
 
     if (absoluteDiff > 12) {
-      const direction = diff > 0 ? 'Right' : 'Left';
-      const shortDirection = diff > 0 ? 'R' : 'L';
+      const dirKey = diff > 0 ? 'R' : 'L';
       let grade = '';
-
+      
       if (absoluteDiff > 140) grade = 'Hairpin';
       else if (absoluteDiff > 110) grade = '1';
       else if (absoluteDiff > 80) grade = '2';
@@ -56,16 +60,12 @@ export const generatePacenotes = (coordinates, options = {}) => {
       else if (absoluteDiff > 30) grade = '5';
       else grade = '6';
 
-      // Add distance since last note
-      const dist = Math.round(accumulatedDistance / 10) * 10;
-      
-      if (style === 'rally') {
-        notes.push(`${dist > 0 ? dist + '... ' : ''}${grade}${shortDirection}`);
-      } else {
-        const desc = descriptiveMap[grade];
-        notes.push(`${dist > 0 ? dist + 'm: ' : ''}${desc} ${direction}`);
-      }
+      const distStr = accumulatedDistance > 10 ? `${Math.round(accumulatedDistance / 10) * 10}m: ` : '';
+      const turnStr = format === 'descriptive' 
+        ? `${descriptiveMap[grade]} ${directionMap[dirKey]}`
+        : `${grade}${directionMap[dirKey]}`;
 
+      notes.push(`${distStr}${turnStr}`);
       accumulatedDistance = 0;
       lastBearing = currentBearing;
     }
@@ -74,8 +74,7 @@ export const generatePacenotes = (coordinates, options = {}) => {
   const finalDist = turf.distance(points[points.length - 2], points[points.length - 1], { units: 'meters' });
   accumulatedDistance += finalDist;
   if (accumulatedDistance > 10) {
-    const dist = Math.round(accumulatedDistance / 10) * 10;
-    notes.push(style === 'rally' ? `${dist}` : `Finish in ${dist}m`);
+    notes.push(`${Math.round(accumulatedDistance / 10) * 10}m: End of section`);
   }
 
   return notes.join('\n');

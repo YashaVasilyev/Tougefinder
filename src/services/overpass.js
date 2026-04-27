@@ -14,34 +14,27 @@ export const fetchRoads = async (lat, lon, radiusKm = 10) => {
   let lastError = null;
 
   for (const baseUrl of MIRRORS) {
-    const query = `
-      [out:json][timeout:25];
-      (
-        way(around:${radiusMeters}, ${lat}, ${lon})[highway~"^(tertiary|unclassified|secondary|primary)$"];
-        node(around:${radiusMeters}, ${lat}, ${lon})[highway=stop];
-      );
-      out body;
-      >;
-      out skel qt;
-    `;
+    const query = `[out:json][timeout:25];(way(around:${radiusMeters},${lat},${lon})[highway~"^(tertiary|unclassified|secondary|primary)$"];node(around:${radiusMeters},${lat},${lon})[highway=stop];);out body;>;out skel qt;`;
+    
+    // Using GET with URL parameters is more compatible with browser-based fetch/CORS
+    const url = `${baseUrl}?data=${encodeURIComponent(query)}`;
 
     try {
-      const response = await fetch(baseUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: `data=${encodeURIComponent(query)}`
-      });
+      const response = await fetch(url);
 
-      if (!response.ok) continue;
+      if (!response.ok) {
+        console.warn(`Mirror ${baseUrl} returned ${response.status}`);
+        continue;
+      }
 
       const data = await response.json();
+      if (!data || !data.elements) continue;
+      
       console.log(`Fetched from ${baseUrl}: ${data.elements.length} elements`);
       return processOverpassData(data);
     } catch (error) {
       lastError = error;
-      console.warn(`Mirror ${baseUrl} failed, trying next...`);
+      console.warn(`Mirror ${baseUrl} failed: ${error.message}`);
     }
   }
 

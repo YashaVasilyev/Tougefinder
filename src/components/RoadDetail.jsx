@@ -18,20 +18,18 @@ const RoadDetail = ({ road, onClose }) => {
 
   const handleOpenMaps = () => {
     const [lon, lat] = road.coordinates[0];
-    // geo: URI is handled natively by iOS (Apple Maps) and Android (Google Maps/user choice)
-    // Falls back to Google Maps on desktop browsers
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isAndroid = /Android/.test(navigator.userAgent);
 
     if (isIOS) {
-      // iOS: opens Apple Maps by default, user can choose others
-      window.location.href = `maps://maps.apple.com/?daddr=${lat},${lon}`;
+      // iOS: open Apple Maps showing the location
+      window.open(`https://maps.apple.com/?ll=${lat},${lon}&q=${encodeURIComponent(road.name)}`, '_blank');
     } else if (isAndroid) {
-      // Android: opens the user's default map app via geo intent
-      window.location.href = `geo:${lat},${lon}?q=${lat},${lon}`;
+      // Android: open Google Maps at the location
+      window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lon}`, '_blank');
     } else {
-      // Desktop: open Google Maps in new tab
-      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`, '_blank');
+      // Desktop: open Google Maps at the location
+      window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lon}`, '_blank');
     }
   };
 
@@ -88,7 +86,7 @@ const RoadDetail = ({ road, onClose }) => {
             className="w-full btn-primary flex items-center justify-center gap-2 py-4 text-base group"
           >
             <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-            Navigate to Start
+            Open in Maps
           </button>
         </div>
       </div>

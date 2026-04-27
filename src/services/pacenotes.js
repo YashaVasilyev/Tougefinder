@@ -31,20 +31,19 @@ export const generatePacenotes = (coordinates, options = {}) => {
 
   const descriptiveMap = {
     'HP': 'Hairpin',
-    '1': 'Very Tight',
-    '2': 'Tight',
-    '3': 'Medium',
-    '4': 'Moderate',
-    '5': 'Wide',
-    '6': 'Slight',
+    '1': 'Sharp',
+    '2': 'Sharp',
+    '3': 'Tight',
+    '4': 'Tight',
+    '5': 'Moderate',
     'S': 'Straight'
   };
 
-  const severityOrder = { 'S': 0, '6': 1, '5': 2, '4': 3, '3': 4, '2': 5, '1': 6, 'HP': 7 };
+  const severityOrder = { 'S': 0, '5': 1, '4': 2, '3': 3, '2': 4, '1': 5, 'HP': 6 };
 
   // --- Step 2: Initial Classification ---
-  // Look 20m ahead and behind for radius (4 steps of 5m)
-  const lookDistance = 4;
+  // Use 10m spacing (2 steps of 5m) as requested
+  const lookDistance = 2;
   let candidates = [];
   let lastGrade = 'S';
   let lastDir = null;
@@ -66,12 +65,10 @@ export const generatePacenotes = (coordinates, options = {}) => {
 
     let grade = 'S';
     if (absDiff > 150 && radius < 30) grade = 'HP';
-    else if (radius < 15) grade = '1';
-    else if (radius < 30) grade = '2';
-    else if (radius < 60) grade = '3';
-    else if (radius < 120) grade = '4';
-    else if (radius < 250) grade = '5';
-    else if (radius < 500) grade = '6';
+    else if (radius < 20) grade = '1'; // Sharp
+    else if (radius < 50) grade = '3'; // Tight
+    else if (radius < 150) grade = '5'; // Moderate
+    // Grade 6 (radius > 150) is treated as 'S' (Straight) to exclude it
 
     const dir = diff > 0 ? 'R' : 'L';
     

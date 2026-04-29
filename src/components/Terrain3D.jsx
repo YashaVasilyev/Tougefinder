@@ -173,10 +173,13 @@ const Terrain3D = ({ road, onClose, elevationProfile }) => {
             <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
               <Text
                 position={[0, 45, 0]}
-                fontSize={4}
-                color="white"
+                rotation={[0, Math.PI, 0]}
+                fontSize={5}
+                color="#facc15"
                 anchorX="center"
                 anchorY="middle"
+                maxWidth={100}
+                textAlign="center"
               >
                 {road.name?.toUpperCase() || 'UNNAMED TOUGE'}
               </Text>

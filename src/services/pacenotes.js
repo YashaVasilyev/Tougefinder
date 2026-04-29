@@ -10,6 +10,23 @@ const calculateRadius = (p1, p2, p3) => {
   return (a * b * c) / (4 * Math.sqrt(areaSq));
 };
 
+const chaikinSmooth = (coords, iterations = 2) => {
+  if (coords.length < 3) return coords;
+  let current = [...coords];
+  for (let iter = 0; iter < iterations; iter++) {
+    const next = [current[0]];
+    for (let i = 0; i < current.length - 1; i++) {
+      const p0 = current[i];
+      const p1 = current[i + 1];
+      next.push([p0[0] * 0.75 + p1[0] * 0.25, p0[1] * 0.75 + p1[1] * 0.25]);
+      next.push([p0[0] * 0.25 + p1[0] * 0.75, p0[1] * 0.25 + p1[1] * 0.75]);
+    }
+    next.push(current[current.length - 1]);
+    current = next;
+  }
+  return current;
+};
+
 export const generatePacenotes = (coordinates, options = {}) => {
   const { reverse = false, format = 'rally', elevationProfile = null } = options;
   let coords = reverse ? [...coordinates].reverse() : coordinates;
@@ -17,8 +34,8 @@ export const generatePacenotes = (coordinates, options = {}) => {
   if (coords.length < 3) return "Road too short for pacenotes.";
 
   // --- Step 1: Pre-smoothing ---
-  const rawLine = turf.lineString(coords);
-  const smoothedLine = turf.bezierSpline(rawLine, { resolution: 10000, sharpness: 0.85 });
+  const smoothedCoords = chaikinSmooth(coords, 2);
+  const smoothedLine = turf.lineString(smoothedCoords);
 
   // --- Step 1.5: Resample the road to consistent 5m segments ---
   const totalLength = turf.length(smoothedLine, { units: 'meters' });
@@ -42,7 +59,6 @@ export const generatePacenotes = (coordinates, options = {}) => {
       const curr = profile[i];
       const next = profile[i + 1];
       
-      // Require at least a 2m peak/drop to consider it a crest/dip
       const isCrest = curr > prev && curr > next && (curr - Math.min(prev, next) > 2);
       const isDip = curr < prev && curr < next && (Math.max(prev, next) - curr > 2);
       
@@ -64,7 +80,7 @@ export const generatePacenotes = (coordinates, options = {}) => {
   const severityOrder = { 'S': 0, '5': 1, '4': 2, '3': 3, '2': 4, '1': 5, 'HP': 6 };
 
   // --- Step 2: Initial Point-by-Point Classification ---
-  const lookDistance = 2; // 10m spacing for reactivity
+  const lookDistance = 2; // 10m spacing
   let rawCandidates = [];
 
   for (let i = lookDistance; i < points.length - lookDistance; i++) {
@@ -82,8 +98,8 @@ export const generatePacenotes = (coordinates, options = {}) => {
     const absDiff = Math.abs(diff);
 
     let grade = 'S';
-    if (absDiff > 150 && radius < 30) grade = 'HP';
-    else if (radius < 20) grade = '1';
+    // Removed point-level HP detection to prevent premature splitting, handled in Step 4
+    if (radius < 20) grade = '1';
     else if (radius < 50) grade = '3';
     else if (radius < 150) grade = '5';
 
@@ -107,7 +123,7 @@ export const generatePacenotes = (coordinates, options = {}) => {
     if (pt.grade !== 'S') {
       if (!currentTurn) {
         currentTurn = { startDist: pt.distance, endDist: pt.distance, dir: pt.dir, grades: [pt.grade], tightestGrade: pt.grade };
-      } else if (currentTurn.dir === pt.dir && (pt.distance - currentTurn.endDist) <= 15) { 
+      } else if (currentTurn.dir === pt.dir && (pt.distance - currentTurn.endDist) <= 20) { 
         currentTurn.endDist = pt.distance;
         currentTurn.grades.push(pt.grade);
         if (severityOrder[pt.grade] > severityOrder[currentTurn.tightestGrade]) {
@@ -118,7 +134,7 @@ export const generatePacenotes = (coordinates, options = {}) => {
         currentTurn = { startDist: pt.distance, endDist: pt.distance, dir: pt.dir, grades: [pt.grade], tightestGrade: pt.grade };
       }
     } else {
-      if (currentTurn && (pt.distance - currentTurn.endDist) > 15) {
+      if (currentTurn && (pt.distance - currentTurn.endDist) > 20) {
         turns.push(currentTurn);
         currentTurn = null;
       }
@@ -126,17 +142,40 @@ export const generatePacenotes = (coordinates, options = {}) => {
   }
   if (currentTurn) turns.push(currentTurn);
 
-  // --- Step 4: Post-Process Turns (Length, Tightens/Opens) ---
+  // --- Step 4: Post-Process Turns (Hairpins, Length, Tightens/Opens) ---
   turns.forEach(t => {
     t.length = t.endDist - t.startDist;
     t.isLong = t.length >= 40 && t.length < 80;
     t.isVeryLong = t.length >= 80;
 
+    // Hairpin detection across the entire complex
+    const startIndex = Math.round(t.startDist / stepSize);
+    const endIndex = Math.round(t.endDist / stepSize);
+    
+    const entryP1 = points[Math.max(0, startIndex - 3)]; // 15m before
+    const entryP2 = points[startIndex];
+    const exitP1 = points[endIndex];
+    const exitP2 = points[Math.min(points.length - 1, endIndex + 3)]; // 15m after
+    
+    if (entryP1 && exitP2) {
+      const bearingIn = turf.bearing(entryP1, entryP2);
+      const bearingOut = turf.bearing(exitP1, exitP2);
+      let totalDiff = bearingOut - bearingIn;
+      if (totalDiff > 180) totalDiff -= 360;
+      if (totalDiff < -180) totalDiff += 360;
+      
+      // If bearing changes > 130° and radius was sharp/tight, upgrade to Hairpin
+      if (Math.abs(totalDiff) > 130 && severityOrder[t.tightestGrade] >= severityOrder['3']) {
+        t.tightestGrade = 'HP';
+        t.grades = t.grades.map(() => 'HP'); // suppress tightens/opens for HP
+      }
+    }
+
     const firstGrade = t.grades[0];
     const lastGrade = t.grades[t.grades.length - 1];
     
-    if (severityOrder[t.tightestGrade] > severityOrder[firstGrade]) t.tightens = true;
-    if (severityOrder[lastGrade] < severityOrder[t.tightestGrade] && lastGrade !== t.tightestGrade) t.opens = true;
+    if (severityOrder[t.tightestGrade] > severityOrder[firstGrade] && t.tightestGrade !== 'HP') t.tightens = true;
+    if (severityOrder[lastGrade] < severityOrder[t.tightestGrade] && lastGrade !== t.tightestGrade && t.tightestGrade !== 'HP') t.opens = true;
   });
 
   turns = turns.filter(t => t.length >= 10 || severityOrder[t.tightestGrade] >= 3);

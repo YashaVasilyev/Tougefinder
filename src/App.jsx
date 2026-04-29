@@ -6,6 +6,7 @@ import RoadDetail from './components/RoadDetail';
 import LocationSearch from './components/LocationSearch';
 import { fetchRoads } from './services/overpass';
 import { calculateScores } from './services/scoring';
+import { getCachedRoads, saveToCache } from './services/cache';
 import * as turf from '@turf/turf';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -159,17 +160,35 @@ function App() {
     setLoading(true);
     setError(null);
     try {
+      const thresholds = { minScore, minLength, maxHouseDensity };
+      
+      // Try cache first
+      const cached = await getCachedRoads(lat, lon, radius, thresholds);
+      if (cached) {
+        setRoads(cached.roads || []);
+        setAllRoads(cached.allRoads || []);
+        setLocation({ lat, lon });
+        setLoading(false);
+        return;
+      }
+
       const radiusKm = radius * 1.60934;
       const rawRoads = await fetchRoads(lat, lon, radiusKm);
       if (!rawRoads) throw new Error("No data received");
 
       // Store all raw roads (with basic scoring, no filter) for map display
       const allScored = calculateScores(rawRoads, { minScore: 0, minLength: 0, maxHouseDensity: 100 });
+      const scoredRoads = calculateScores(rawRoads, thresholds);
+
       setAllRoads(allScored || []);
-      
-      const scoredRoads = calculateScores(rawRoads, { minScore, minLength, maxHouseDensity });
       setRoads(scoredRoads || []);
       setLocation({ lat, lon });
+
+      // Save to cache
+      await saveToCache(lat, lon, radius, thresholds, {
+        roads: scoredRoads,
+        allRoads: allScored
+      });
     } catch (err) {
       console.error(err);
       setError("Search failed. Try a smaller radius or different area.");

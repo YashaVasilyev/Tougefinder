@@ -1,34 +1,45 @@
-import { get, set, clear, keys } from 'idb-keyval';
+import { get, set, keys, del } from 'idb-keyval';
 
 /**
- * Persistent Cache Service for OSM data
- * Uses IndexedDB to store large datasets indefinitely
+ * Service to handle persistent caching of road search results
  */
 
-const CACHE_PREFIX = 'touge_cache_';
+// Round coordinates to a grid to increase cache hit rate (approx 1.1km grid)
+const roundToGrid = (num) => Math.round(num * 100) / 100;
 
-export const getCachedRoads = async (lat, lon, radius) => {
-  const key = generateKey(lat, lon, radius);
-  return await get(key);
+export const getCachedRoads = async (lat, lon, radius, thresholds) => {
+  const key = `roads_${roundToGrid(lat)}_${roundToGrid(lon)}_${radius}_${JSON.stringify(thresholds)}`;
+  try {
+    const cached = await get(key);
+    if (cached && (Date.now() - cached.timestamp < 1000 * 60 * 60 * 24 * 7)) { // 7 days cache
+      console.log('Cache hit for:', key);
+      return cached.data;
+    }
+    return null;
+  } catch (err) {
+    console.error('Cache read error:', err);
+    return null;
+  }
 };
 
-export const cacheRoads = async (lat, lon, radius, roads) => {
-  const key = generateKey(lat, lon, radius);
-  await set(key, roads);
-};
-
-export const clearAppCache = async () => {
-  await clear();
-};
-
-export const getCacheSize = async () => {
-  const allKeys = await keys();
-  return allKeys.length;
-};
-
-// Simple spatial keying (rounded to 2 decimal places ~1.1km precision)
-const generateKey = (lat, lon, radius) => {
-  const rLat = Math.round(lat * 50) / 50; // ~2km grid
-  const rLon = Math.round(lon * 50) / 50;
-  return `${CACHE_PREFIX}${rLat}_${rLon}_${radius}`;
+export const saveToCache = async (lat, lon, radius, thresholds, data) => {
+  const key = `roads_${roundToGrid(lat)}_${roundToGrid(lon)}_${radius}_${JSON.stringify(thresholds)}`;
+  try {
+    await set(key, {
+      timestamp: Date.now(),
+      data: data
+    });
+    console.log('Saved to cache:', key);
+    
+    // Cleanup old cache entries if needed (keep latest 50 searches)
+    const allKeys = await keys();
+    if (allKeys.length > 50) {
+      const sortedKeys = allKeys.filter(k => k.startsWith('roads_')).sort();
+      for (let i = 0; i < sortedKeys.length - 50; i++) {
+        await del(sortedKeys[i]);
+      }
+    }
+  } catch (err) {
+    console.error('Cache write error:', err);
+  }
 };

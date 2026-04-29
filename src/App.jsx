@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Map as MapIcon, List, Navigation, MapPin, Loader2, ChevronUp, ChevronDown, SlidersHorizontal, Info } from 'lucide-react';
-import MapboxMap from './components/LeafletMap';
+import MapboxMap from './components/MapboxMap';
 import RoadList from './components/RoadList';
 import RoadDetail from './components/RoadDetail';
 import LocationSearch from './components/LocationSearch';

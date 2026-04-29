@@ -183,18 +183,33 @@ export const generatePacenotes = (coordinates, options = {}) => {
     const lastGrade = t.grades[t.grades.length - 1];
   });
 
-  // --- Step 4.5: Identify alternating 6-grade sequences to treat as straights ---
-  for (let i = 0; i < turns.length; i++) {
-    const t = turns[i];
-    if (t.tightestGrade === '6') {
-      const prev = turns[i - 1];
-      const next = turns[i + 1];
-      let isAlternating = false;
+  // --- Step 4.5: Identify alternating 6-grade sequences (3+ in a row) to treat as straights ---
+  let seqIndex = 0;
+  while (seqIndex < turns.length) {
+    if (turns[seqIndex].tightestGrade === '6') {
+      let seqLength = 1;
+      let curr = seqIndex;
       
-      if (prev && prev.tightestGrade === '6' && prev.dir !== t.dir && (t.startDist - prev.endDist) < 50) isAlternating = true;
-      if (next && next.tightestGrade === '6' && next.dir !== t.dir && (next.startDist - t.endDist) < 50) isAlternating = true;
+      while (curr + 1 < turns.length) {
+         const t1 = turns[curr];
+         const t2 = turns[curr + 1];
+         if (t2.tightestGrade === '6' && t2.dir !== t1.dir && (t2.startDist - t1.endDist) < 50) {
+            seqLength++;
+            curr++;
+         } else {
+            break;
+         }
+      }
       
-      if (isAlternating) t.markForRemoval = true;
+      if (seqLength >= 3) {
+         for (let j = seqIndex; j <= curr; j++) {
+            turns[j].markForRemoval = true;
+         }
+      }
+      
+      seqIndex = curr + 1;
+    } else {
+      seqIndex++;
     }
   }
 

@@ -21,7 +21,16 @@ const ChangeView = ({ center, zoom, bounds }) => {
   const map = useMap();
   useEffect(() => {
     if (bounds) {
-      map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
+      const isDesktop = window.innerWidth > 768;
+      // Estimate sidebar width based on App.jsx classes (md:w-80 = 320px, lg:w-1/4 = 25%)
+      const sidebarWidth = window.innerWidth > 1024 ? window.innerWidth * 0.25 : 320;
+      
+      map.fitBounds(bounds, { 
+        paddingTopLeft: [isDesktop ? sidebarWidth + 50 : 50, 50],
+        paddingBottomRight: [50, 50],
+        animate: true, 
+        duration: 1.5 
+      });
       return;
     }
     if (center) {

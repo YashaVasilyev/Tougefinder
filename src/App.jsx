@@ -288,7 +288,7 @@ function App() {
         {(view === 'list' || window.innerWidth > 768) && (
           <div 
             className={cn(
-              "absolute inset-x-0 bottom-0 top-1/2 md:top-0 md:left-0 md:w-96 lg:w-1/3 bg-zinc-950/90 backdrop-blur-2xl border-t md:border-t-0 md:border-r border-white/10 z-[1001] overflow-hidden flex flex-col shadow-2xl",
+              "absolute inset-x-0 bottom-0 top-1/2 md:top-0 md:left-0 md:w-80 lg:w-1/4 bg-zinc-950/90 backdrop-blur-2xl border-t md:border-t-0 md:border-r border-white/10 z-[1001] overflow-hidden flex flex-col shadow-2xl",
               view === 'map' && "hidden md:flex"
             )}
           >

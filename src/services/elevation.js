@@ -61,9 +61,9 @@ export const fetchTerrainGrid = async (coordinates, resolution = 10) => {
   }
 
   try {
-    // Using opentopodata.org (SRTM 30m dataset) - reliable for grids
+    // Call our local serverless proxy to bypass CORS
     const locations = gridPoints.map(p => `${p.latitude},${p.longitude}`).join('|');
-    const response = await fetch(`https://api.opentopodata.org/v1/srtm30m?locations=${locations}`);
+    const response = await fetch(`/api/terrain?locations=${locations}`);
     
     if (!response.ok) throw new Error('Terrain grid API failed');
     

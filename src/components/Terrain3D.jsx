@@ -53,7 +53,7 @@ const TerrainMesh = ({ gridData }) => {
         metalness={0.1}
         flatShading={true}
       />
-      <gridHelper args={[100, 10, '#ffffff05', '#ffffff05']} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.01]} />
+      <gridHelper args={[100, 10, '#333333', '#222222']} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.01]} />
     </mesh>
   );
 };
@@ -175,7 +175,6 @@ const Terrain3D = ({ road, onClose, elevationProfile }) => {
                 position={[0, 45, 0]}
                 fontSize={4}
                 color="white"
-                font="https://fonts.gstatic.com/s/outfit/v11/Q_TX9S3nPTHL33nw17MxrCPN.woff"
                 anchorX="center"
                 anchorY="middle"
               >

@@ -51,6 +51,9 @@ const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, cen
         center={center ? [center.lat, center.lon] : [40.7128, -74.006]} 
         zoom={zoom} 
         scrollWheelZoom={!isMobile}
+        zoomSnap={0}
+        zoomDelta={0.25}
+        wheelPxPerZoomLevel={60}
         dragging={true}
         tap={false}
         className="w-full h-full"

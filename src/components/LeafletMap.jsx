@@ -26,8 +26,8 @@ const ChangeView = ({ center, zoom, bounds }) => {
       const sidebarWidth = window.innerWidth > 1024 ? window.innerWidth * 0.25 : 320;
       
       map.fitBounds(bounds, { 
-        paddingTopLeft: [isDesktop ? sidebarWidth + 50 : 50, 50],
-        paddingBottomRight: [50, 50],
+        paddingTopLeft: [isDesktop ? sidebarWidth + 60 : 60, 60],
+        paddingBottomRight: [isDesktop ? 420 + 60 : 60, 60],
         animate: true, 
         duration: 1.5 
       });

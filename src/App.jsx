@@ -405,6 +405,8 @@ function App() {
       {selectedRoad && (
         <RoadDetail 
           road={selectedRoad} 
+          onClose={() => {
+            setSelectedRoad(null);
             setGeneratedTurns([]);
             setShow3D(false);
             setSelectedRoadElevation(null);

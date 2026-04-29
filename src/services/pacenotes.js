@@ -148,6 +148,7 @@ export const generatePacenotes = (coordinates, options = {}) => {
   };
 
   const finalNotes = [];
+  const finalTurns = [];
 
   for (let i = 0; i < turns.length; i++) {
     const t = turns[i];
@@ -186,7 +187,14 @@ export const generatePacenotes = (coordinates, options = {}) => {
       else if (nearbyElevation.type === 'dip') suffix += ' dip';
     }
 
-    finalNotes.push(`${prefix}${gradeStr} ${dirStr}${suffix}`);
+    const turnText = `${gradeStr} ${dirStr}${suffix}`;
+    finalNotes.push(`${prefix}${turnText}`);
+
+    const coordIndex = Math.round(t.startDist / stepSize);
+    finalTurns.push({
+      text: turnText,
+      coordinate: points[Math.min(coordIndex, points.length - 1)]
+    });
   }
 
   const lastEndDist = turns.length > 0 ? turns[turns.length - 1].endDist : 0;
@@ -195,7 +203,11 @@ export const generatePacenotes = (coordinates, options = {}) => {
     finalNotes.push(`${remainingDist}m: End of section`);
   }
 
-  return finalNotes.join('\n');
+  const textOutput = finalNotes.join('\n');
+  if (options.returnObject) {
+    return { text: textOutput, turns: finalTurns };
+  }
+  return textOutput;
 };
 
 /**

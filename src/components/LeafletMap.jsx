@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Polyline, useMap, ZoomControl } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, useMap, ZoomControl, Marker, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -32,7 +32,7 @@ const ChangeView = ({ center, zoom }) => {
   return null;
 };
 
-const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center }) => {
+const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center, generatedTurns = [] }) => {
   const [zoom, setZoom] = useState(13);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -86,6 +86,17 @@ const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center }) => {
             zoom={14} 
           />
         )}
+
+        {generatedTurns.map((turn, idx) => (
+          <Marker 
+            key={`turn-${idx}`} 
+            position={[turn.coordinate[1], turn.coordinate[0]]}
+          >
+            <Tooltip permanent direction="top" className="bg-black/80 text-white border-white/20 font-bold px-2 py-1 text-[10px] uppercase">
+              {turn.text}
+            </Tooltip>
+          </Marker>
+        ))}
       </MapContainer>
 
       {/* Legend */}

@@ -18,6 +18,7 @@ function App() {
   const [roads, setRoads] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedRoad, setSelectedRoad] = useState(null);
+  const [generatedTurns, setGeneratedTurns] = useState([]);
   const [view, setView] = useState('map'); // 'map' or 'list'
   const [radius, setRadius] = useState(10);
   const [error, setError] = useState(null);
@@ -190,8 +191,12 @@ function App() {
           <MapboxMap 
             roads={roads} 
             selectedRoad={selectedRoad} 
-            onSelectRoad={setSelectedRoad}
+            onSelectRoad={(road) => {
+              setSelectedRoad(road);
+              setGeneratedTurns([]);
+            }}
             center={location}
+            generatedTurns={generatedTurns}
           />
         </div>
 
@@ -303,6 +308,7 @@ function App() {
                 loading={loading} 
                 onSelectRoad={(road) => {
                   setSelectedRoad(road);
+                  setGeneratedTurns([]);
                   if (window.innerWidth < 768) setView('map');
                 }}
                 selectedRoad={selectedRoad}
@@ -316,7 +322,11 @@ function App() {
       {selectedRoad && (
         <RoadDetail 
           road={selectedRoad} 
-          onClose={() => setSelectedRoad(null)} 
+          onClose={() => {
+            setSelectedRoad(null);
+            setGeneratedTurns([]);
+          }} 
+          onNotesGenerated={setGeneratedTurns}
         />
       )}
 

@@ -40,16 +40,17 @@ const TerrainMesh = ({ gridData }) => {
     }
     
     geo.computeVertexNormals();
+    geo.attributes.position.needsUpdate = true;
     return geo;
   }, [grid, resolution]);
 
   return (
     <mesh geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <meshStandardMaterial 
-        color="#18181b" 
+        color="#27272a" 
         wireframe={false} 
-        roughness={0.8}
-        metalness={0.2}
+        roughness={0.7}
+        metalness={0.1}
         flatShading={true}
       />
       <gridHelper args={[100, 10, '#ffffff05', '#ffffff05']} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.01]} />
@@ -158,20 +159,21 @@ const Terrain3D = ({ road, onClose, elevationProfile }) => {
               maxDistance={150}
             />
             
-            <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-            <ambientLight intensity={0.2} />
-            <pointLight position={[100, 100, 100]} intensity={1} castShadow />
-            <spotLight position={[-100, 100, -100]} intensity={0.5} />
+            <Stars radius={300} depth={60} count={10000} factor={7} saturation={0} fade speed={1} />
+            <color attach="background" args={['#020205']} />
+            <ambientLight intensity={0.5} />
+            <pointLight position={[100, 150, 100]} intensity={2} castShadow />
+            <spotLight position={[-100, 100, -100]} intensity={1} />
             
             <TerrainMesh gridData={gridData} />
             <RoadLine roadCoords={road.coordinates} gridData={gridData} elevationProfile={elevationProfile} />
             
-            <Environment preset="night" />
+            <Environment preset="city" />
 
             <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
               <Text
-                position={[0, 40, 0]}
-                fontSize={3}
+                position={[0, 45, 0]}
+                fontSize={4}
                 color="white"
                 font="https://fonts.gstatic.com/s/outfit/v11/Q_TX9S3nPTHL33nw17MxrCPN.woff"
                 anchorX="center"

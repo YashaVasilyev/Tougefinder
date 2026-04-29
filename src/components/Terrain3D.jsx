@@ -56,28 +56,53 @@ const RoadLine = ({ roadCoords, gridData, elevationProfile, heightScale }) => {
   const minE = useMemo(() => Math.min(...grid.flat()), [grid]);
   const maxE = useMemo(() => Math.max(...grid.flat()), [grid]);
   const range = maxE - minE || 100;
+  const resolution = grid.length;
+
+  // Bilinear interpolation from grid
+  const sampleGrid = (lat, lon) => {
+    const u = (lon - minLon) / (maxLon - minLon); // 0..1
+    const v = (lat - minLat) / (maxLat - minLat); // 0..1
+
+    const col = u * (resolution - 1);
+    const row = v * (resolution - 1);
+
+    const col0 = Math.max(0, Math.min(resolution - 2, Math.floor(col)));
+    const row0 = Math.max(0, Math.min(resolution - 2, Math.floor(row)));
+    const col1 = col0 + 1;
+    const row1 = row0 + 1;
+
+    const fc = col - col0;
+    const fr = row - row0;
+
+    // grid is [row][col]
+    const e00 = grid[row0][col0];
+    const e10 = grid[row0][col1];
+    const e01 = grid[row1][col0];
+    const e11 = grid[row1][col1];
+
+    return e00 * (1 - fr) * (1 - fc) +
+           e10 * (1 - fr) * fc +
+           e01 * fr * (1 - fc) +
+           e11 * fr * fc;
+  };
 
   const points = useMemo(() => {
-    return roadCoords.map((c, i) => {
+    return roadCoords.map((c) => {
       const lon = c[0];
       const lat = c[1];
 
       const x = ((lon - minLon) / (maxLon - minLon)) * 100 - 50;
       const z = ((lat - minLat) / (maxLat - minLat)) * 100 - 50;
 
-      let y = 0.5;
-      if (elevationProfile && elevationProfile.length > 0) {
-        const profileIndex = Math.floor((i / roadCoords.length) * elevationProfile.length);
-        const elev = elevationProfile[profileIndex];
-        y = ((elev - minE) / range) * heightScale + 0.8;
-      }
+      const elev = sampleGrid(lat, lon);
+      const y = ((elev - minE) / range) * heightScale + 0.6;
 
       return new THREE.Vector3(x, y, -z);
     });
-  }, [roadCoords, elevationProfile, minLat, maxLat, minLon, maxLon, minE, maxE, range, heightScale]);
+  }, [roadCoords, minLat, maxLat, minLon, maxLon, minE, range, heightScale, grid]);
 
   const curve = useMemo(() => new THREE.CatmullRomCurve3(points), [points]);
-  const tubeGeometry = useMemo(() => new THREE.TubeGeometry(curve, 100, 0.4, 8, false), [curve]);
+  const tubeGeometry = useMemo(() => new THREE.TubeGeometry(curve, 200, 0.35, 8, false), [curve]);
 
   return (
     <mesh geometry={tubeGeometry}>

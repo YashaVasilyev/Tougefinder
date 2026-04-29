@@ -183,7 +183,22 @@ export const generatePacenotes = (coordinates, options = {}) => {
     const lastGrade = t.grades[t.grades.length - 1];
   });
 
-  turns = turns.filter(t => t.length >= 10 || severityOrder[t.tightestGrade] >= severityOrder['3']);
+  // --- Step 4.5: Identify alternating 6-grade sequences to treat as straights ---
+  for (let i = 0; i < turns.length; i++) {
+    const t = turns[i];
+    if (t.tightestGrade === '6') {
+      const prev = turns[i - 1];
+      const next = turns[i + 1];
+      let isAlternating = false;
+      
+      if (prev && prev.tightestGrade === '6' && prev.dir !== t.dir && (t.startDist - prev.endDist) < 50) isAlternating = true;
+      if (next && next.tightestGrade === '6' && next.dir !== t.dir && (next.startDist - t.endDist) < 50) isAlternating = true;
+      
+      if (isAlternating) t.markForRemoval = true;
+    }
+  }
+
+  turns = turns.filter(t => !t.markForRemoval && (t.length >= 10 || severityOrder[t.tightestGrade] >= severityOrder['3']));
 
   // --- Step 5: Final Formatting and Connectors ---
   const directionMap = {
@@ -217,8 +232,10 @@ export const generatePacenotes = (coordinates, options = {}) => {
     const dirStr = directionMap[t.dir];
     
     let suffix = '';
-    if (t.isVeryLong) suffix += ' very long';
-    else if (t.isLong) suffix += ' long';
+    if (t.tightestGrade !== 'HP') {
+      if (t.isVeryLong) suffix += ' very long';
+      else if (t.isLong) suffix += ' long';
+    }
 
     // Elevation features
     const nearbyElevation = elevationFeatures.find(f => Math.abs(f.distance - t.startDist) < 30);

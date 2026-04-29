@@ -28,7 +28,7 @@ const TerrainMesh = ({ gridData }) => {
     });
     
     const range = maxE - minE || 100;
-    const heightScale = 20; // Max height in 3D units
+    const heightScale = 30; // More dramatic relief
 
     for (let i = 0; i < resolution; i++) {
       for (let j = 0; j < resolution; j++) {
@@ -65,7 +65,7 @@ const RoadLine = ({ roadCoords, gridData, elevationProfile }) => {
   const minE = useMemo(() => Math.min(...grid.flat()), [grid]);
   const maxE = useMemo(() => Math.max(...grid.flat()), [grid]);
   const range = maxE - minE || 100;
-  const heightScale = 20;
+  const heightScale = 30;
 
   const points = useMemo(() => {
     // If we have a profile, interpolate it to match roadCoords length
@@ -112,7 +112,7 @@ const Terrain3D = ({ road, onClose, elevationProfile }) => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      const data = await fetchTerrainGrid(road.coordinates, 15);
+      const data = await fetchTerrainGrid(road.coordinates, 30);
       setGridData(data);
       setLoading(false);
     };

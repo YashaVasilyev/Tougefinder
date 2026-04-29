@@ -32,8 +32,25 @@ export const fetchElevationForRoad = async (coordinates) => {
   }
 };
 
-export const fetchTerrainGrid = async (coordinates, resolution = 10) => {
-  // Calculate bounding box
+// --- Tile-based high-resolution terrain fetching ---
+// Uses AWS Terrain Tiles (Terrarium format) — free, CORS-enabled, ~10m resolution at zoom 13
+// Elevation decode: height = (R * 256 + G + B / 256) - 32768
+
+const lonToTileX = (lon, z) => Math.floor((lon + 180) / 360 * Math.pow(2, z));
+
+const latToTileY = (lat, z) => {
+  const latRad = lat * Math.PI / 180;
+  return Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * Math.pow(2, z));
+};
+
+const tileToLon = (x, z) => x / Math.pow(2, z) * 360 - 180;
+
+const tileToLat = (y, z) => {
+  const n = Math.PI - 2 * Math.PI * y / Math.pow(2, z);
+  return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+};
+
+export const fetchTerrainGrid = async (coordinates, resolution = 50) => {
   const lats = coordinates.map(c => c[1]);
   const lons = coordinates.map(c => c[0]);
   const minLat = Math.min(...lats);
@@ -41,61 +58,86 @@ export const fetchTerrainGrid = async (coordinates, resolution = 10) => {
   const minLon = Math.min(...lons);
   const maxLon = Math.max(...lons);
 
-  // Add 20% padding
-  const latPad = (maxLat - minLat) * 0.2;
-  const lonPad = (maxLon - minLon) * 0.2;
-  
-  const gridLats = [];
-  const gridLons = [];
-  
-  for (let i = 0; i < resolution; i++) {
-    gridLats.push((minLat - latPad) + (i / (resolution - 1)) * ((maxLat + latPad) - (minLat - latPad)));
-    gridLons.push((minLon - lonPad) + (i / (resolution - 1)) * ((maxLon + lonPad) - (minLon - lonPad)));
-  }
+  const latPad = Math.max((maxLat - minLat) * 0.25, 0.005);
+  const lonPad = Math.max((maxLon - minLon) * 0.25, 0.005);
 
-  const gridPoints = [];
-  for (let i = 0; i < resolution; i++) {
-    for (let j = 0; j < resolution; j++) {
-      gridPoints.push({ latitude: gridLats[i], longitude: gridLons[j] });
-    }
-  }
+  const paddedMinLat = minLat - latPad;
+  const paddedMaxLat = maxLat + latPad;
+  const paddedMinLon = minLon - lonPad;
+  const paddedMaxLon = maxLon + lonPad;
+
+  // Zoom 13 gives ~10m/px, zoom 12 gives ~20m/px
+  const zoom = 13;
+
+  const tileMinX = lonToTileX(paddedMinLon, zoom);
+  const tileMaxX = lonToTileX(paddedMaxLon, zoom);
+  const tileMinY = latToTileY(paddedMaxLat, zoom); // Y is inverted
+  const tileMaxY = latToTileY(paddedMinLat, zoom);
+
+  const TILE_SIZE = 256;
+  const totalWidth = (tileMaxX - tileMinX + 1) * TILE_SIZE;
+  const totalHeight = (tileMaxY - tileMinY + 1) * TILE_SIZE;
 
   try {
-    // Call our local serverless proxy to bypass CORS
-    const locations = gridPoints.map(p => `${p.latitude},${p.longitude}`).join('|');
-    const response = await fetch(`/api/terrain?locations=${locations}`);
-    
-    if (!response.ok) throw new Error('Terrain grid API failed');
-    
-    const data = await response.json();
-    const grid = [];
-    for (let i = 0; i < resolution; i++) {
-      grid[i] = [];
-      for (let j = 0; j < resolution; j++) {
-        grid[i][j] = data.results[i * resolution + j].elevation;
+    // Fetch all tiles in parallel
+    const fetchPromises = [];
+    for (let tx = tileMinX; tx <= tileMaxX; tx++) {
+      for (let ty = tileMinY; ty <= tileMaxY; ty++) {
+        fetchPromises.push(
+          fetch(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${tx}/${ty}.png`)
+            .then(r => { if (!r.ok) throw new Error('Tile fetch failed'); return r.blob(); })
+            .then(blob => createImageBitmap(blob))
+            .then(img => ({ img, dx: (tx - tileMinX) * TILE_SIZE, dy: (ty - tileMinY) * TILE_SIZE }))
+        );
       }
     }
 
-    return {
-      grid,
-      minLat: minLat - latPad,
-      maxLat: maxLat + latPad,
-      minLon: minLon - lonPad,
-      maxLon: maxLon + lonPad
-    };
+    const tiles = await Promise.all(fetchPromises);
+
+    // Stitch into one canvas
+    const canvas = new OffscreenCanvas(totalWidth, totalHeight);
+    const ctx = canvas.getContext('2d');
+    for (const { img, dx, dy } of tiles) {
+      ctx.drawImage(img, dx, dy);
+    }
+
+    // World bounds of the stitched canvas
+    const canvasMinLon = tileToLon(tileMinX, zoom);
+    const canvasMaxLon = tileToLon(tileMaxX + 1, zoom);
+    const canvasMaxLat = tileToLat(tileMinY, zoom);
+    const canvasMinLat = tileToLat(tileMaxY + 1, zoom);
+
+    // Sample a grid from the canvas
+    const grid = [];
+    for (let i = 0; i < resolution; i++) {
+      grid[i] = [];
+      const lat = paddedMinLat + (i / (resolution - 1)) * (paddedMaxLat - paddedMinLat);
+      for (let j = 0; j < resolution; j++) {
+        const lon = paddedMinLon + (j / (resolution - 1)) * (paddedMaxLon - paddedMinLon);
+
+        const px = Math.floor(((lon - canvasMinLon) / (canvasMaxLon - canvasMinLon)) * totalWidth);
+        const py = Math.floor(((canvasMaxLat - lat) / (canvasMaxLat - canvasMinLat)) * totalHeight);
+
+        const safeX = Math.max(0, Math.min(totalWidth - 1, px));
+        const safeY = Math.max(0, Math.min(totalHeight - 1, py));
+
+        const pixel = ctx.getImageData(safeX, safeY, 1, 1).data;
+        // Terrarium decode
+        const elevation = (pixel[0] * 256 + pixel[1] + pixel[2] / 256) - 32768;
+        grid[i][j] = elevation;
+      }
+    }
+
+    return { grid, minLat: paddedMinLat, maxLat: paddedMaxLat, minLon: paddedMinLon, maxLon: paddedMaxLon };
+
   } catch (error) {
-    console.error('Terrain grid error:', error);
-    // Mock grid if failed
-    const grid = Array(resolution).fill(0).map(() => Array(resolution).fill(300 + Math.random() * 50));
-    return {
-      grid,
-      minLat: minLat - latPad,
-      maxLat: maxLat + latPad,
-      minLon: minLon - lonPad,
-      maxLon: maxLon + lonPad
-    };
+    console.error('Terrain tile error:', error);
+    // Flat fallback
+    const grid = Array(resolution).fill(0).map(() => Array(resolution).fill(300));
+    return { grid, minLat: paddedMinLat, maxLat: paddedMaxLat, minLon: paddedMinLon, maxLon: paddedMaxLon };
   }
 };
+
 
 const calculateElevationStats = (elevations) => {
   let gain = 0;

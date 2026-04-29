@@ -40,12 +40,12 @@ const TerrainMesh = ({ gridData, heightScale }) => {
   return (
     <mesh geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <meshStandardMaterial
-        color="#27272a"
-        roughness={0.7}
-        metalness={0.1}
-        flatShading={true}
+        color="#2d2d35"
+        roughness={0.8}
+        metalness={0.05}
+        flatShading={false}
       />
-      <gridHelper args={[100, 15, '#333333', '#1f1f1f']} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.01]} />
+      <gridHelper args={[100, 20, '#2a2a35', '#1a1a22']} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.01]} />
     </mesh>
   );
 };
@@ -125,7 +125,7 @@ const Terrain3D = ({ road, onClose, elevationProfile }) => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      const data = await fetchTerrainGrid(road.coordinates, 30);
+      const data = await fetchTerrainGrid(road.coordinates);
       setGridData(data);
       setLoading(false);
     };

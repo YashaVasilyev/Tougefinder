@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Polyline, useMap, ZoomControl, Marker, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import '../utils/SmoothWheelZoom';
 
 // Fix Leaflet icon issue
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -50,10 +51,11 @@ const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, cen
       <MapContainer 
         center={center ? [center.lat, center.lon] : [40.7128, -74.006]} 
         zoom={zoom} 
-        scrollWheelZoom={!isMobile}
+        scrollWheelZoom={false}
+        smoothWheelZoom={true}
+        smoothSensitivity={1}
         zoomSnap={0}
         zoomDelta={0.25}
-        wheelPxPerZoomLevel={40}
         inertia={true}
         inertiaDeceleration={3000}
         inertiaMaxSpeed={Infinity}

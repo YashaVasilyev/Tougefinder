@@ -75,10 +75,11 @@ export const generatePacenotes = (coordinates, options = {}) => {
     '3': 'Tight',
     '4': 'Tight',
     '5': 'Moderate',
+    '6': 'Slight',
     'S': 'Straight'
   };
 
-  const severityOrder = { 'S': 0, '5': 1, '4': 2, '3': 3, '2': 4, '1': 5, 'Square': 6, 'HP': 7 };
+  const severityOrder = { 'S': 0, '6': 1, '5': 2, '4': 3, '3': 4, '2': 5, '1': 6, 'Square': 7, 'HP': 8 };
 
   // --- Step 2: Initial Point-by-Point Classification ---
   const lookDistance = 2; // 10m spacing
@@ -103,6 +104,7 @@ export const generatePacenotes = (coordinates, options = {}) => {
     if (radius < 20) grade = '1';
     else if (radius < 50) grade = '3';
     else if (radius < 80) grade = '5';
+    else if (radius < 150) grade = '6';
 
     const dir = diff > 0 ? 'R' : 'L';
     
@@ -181,7 +183,7 @@ export const generatePacenotes = (coordinates, options = {}) => {
     const lastGrade = t.grades[t.grades.length - 1];
   });
 
-  turns = turns.filter(t => t.length >= 10 || severityOrder[t.tightestGrade] >= 3);
+  turns = turns.filter(t => t.length >= 10 || severityOrder[t.tightestGrade] >= severityOrder['3']);
 
   // --- Step 5: Final Formatting and Connectors ---
   const directionMap = {

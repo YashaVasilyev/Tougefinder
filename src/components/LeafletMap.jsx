@@ -32,7 +32,7 @@ const ChangeView = ({ center, zoom }) => {
   return null;
 };
 
-const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center, generatedTurns = [] }) => {
+const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, center, generatedTurns = [] }) => {
   const [zoom, setZoom] = useState(13);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -41,6 +41,9 @@ const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center, generatedTurns 
     if (score >= 50) return '#facc15'; // Yellow
     return '#4ade80'; // Green
   };
+
+  // Filter unlisted roads to only those not in the main roads list
+  const filteredUnlisted = unlistedRoads.filter(ur => !roads.find(r => r.id === ur.id));
 
   return (
     <div className="w-full h-full relative bg-zinc-950">
@@ -63,6 +66,23 @@ const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center, generatedTurns 
         
         <ZoomControl position="bottomright" />
         <ChangeView center={center} zoom={zoom} />
+
+        {/* Render unlisted (filtered out) roads in a subtle grey */}
+        {filteredUnlisted.map((road, idx) => (
+          <Polyline
+            key={`unlisted-${road.id}-${idx}`}
+            positions={road.coordinates.map(c => [c[1], c[0]])}
+            pathOptions={{
+              color: '#3f3f46', // zinc-700
+              weight: 3,
+              opacity: 0.4,
+              lineJoin: 'round'
+            }}
+            eventHandlers={{
+              click: (e) => onSelectRoad(road, e.originalEvent.shiftKey)
+            }}
+          />
+        ))}
 
         {roads.map((road, idx) => (
           <Polyline

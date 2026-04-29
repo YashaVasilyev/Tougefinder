@@ -20,6 +20,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [selectedRoad, setSelectedRoad] = useState(null);
   const [generatedTurns, setGeneratedTurns] = useState([]);
+  const [allRoads, setAllRoads] = useState([]); // all fetched roads, unfiltered
   const [view, setView] = useState('map'); // 'map' or 'list'
   const [radius, setRadius] = useState(10);
   const [error, setError] = useState(null);
@@ -122,22 +123,31 @@ function App() {
         type: road.type,
         tags: { ...selectedRoad.tags, ...road.tags },
         coordinates: newCoords,
-        hasMajorIntersection: road.hasMajorIntersection || selectedRoad.hasMajorIntersection,
-        residentialDensity: Math.max(road.residentialDensity || 0, selectedRoad.residentialDensity || 0),
+        hasMajorIntersection: false, // bypass exclusion for user-combined roads
+        residentialDensity: 0,
+        intersections: (selectedRoad.intersections || 0) + (road.intersections || 0),
+        stopSigns: (selectedRoad.stopSigns || 0) + (road.stopSigns || 0),
       };
       
+      // Score with no exclusion filters so combined roads always get a rating
       const [scoredCombined] = calculateScores([combinedRoad], {
-        minScore: 0, 
+        minScore: 0,
         minLength: 0,
         maxHouseDensity: 100
       });
       
-      if (scoredCombined) {
-        setRoads(prev => [...prev.filter(r => r.id !== selectedRoad.id && r.id !== road.id), scoredCombined]);
-        setSelectedRoad(scoredCombined);
-        setGeneratedTurns([]);
-      }
+      const result = scoredCombined || { ...combinedRoad, totalScore: 0, curvatureScore: 0, flowScore: 0, lengthMiles: '?', lengthKm: '?' };
+      setRoads(prev => [...prev.filter(r => r.id !== selectedRoad.id && r.id !== road.id), result]);
+      setAllRoads(prev => [...prev.filter(r => r.id !== selectedRoad.id && r.id !== road.id), result]);
+      setSelectedRoad(result);
+      setGeneratedTurns([]);
     } else {
+      // Normal click or Shift-click without a prior selection
+      // Ensure the road is in the active list if it was clicked from unlisted roads
+      const inList = roads.find(r => r.id === road.id);
+      if (!inList) {
+        setRoads(prev => [...prev, road]);
+      }
       setSelectedRoad(road);
       setGeneratedTurns([]);
       if (window.innerWidth < 768 && !isShift) setView('map');
@@ -152,6 +162,10 @@ function App() {
       const radiusKm = radius * 1.60934;
       const rawRoads = await fetchRoads(lat, lon, radiusKm);
       if (!rawRoads) throw new Error("No data received");
+
+      // Store all raw roads (with basic scoring, no filter) for map display
+      const allScored = calculateScores(rawRoads, { minScore: 0, minLength: 0, maxHouseDensity: 100 });
+      setAllRoads(allScored || []);
       
       const scoredRoads = calculateScores(rawRoads, { minScore, minLength, maxHouseDensity });
       setRoads(scoredRoads || []);
@@ -243,6 +257,7 @@ function App() {
         )}>
           <MapboxMap 
             roads={roads} 
+            unlistedRoads={allRoads}
             selectedRoad={selectedRoad} 
             onSelectRoad={handleSelectRoad}
             center={location}

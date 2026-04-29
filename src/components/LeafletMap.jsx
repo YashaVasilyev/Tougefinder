@@ -53,7 +53,10 @@ const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, cen
         scrollWheelZoom={!isMobile}
         zoomSnap={0}
         zoomDelta={0.25}
-        wheelPxPerZoomLevel={60}
+        wheelPxPerZoomLevel={40}
+        inertia={true}
+        inertiaDeceleration={3000}
+        inertiaMaxSpeed={Infinity}
         dragging={true}
         tap={false}
         className="w-full h-full"
@@ -65,6 +68,8 @@ const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, cen
           url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
           className="map-tiles-dark"
           maxZoom={20}
+          keepBuffer={8}
+          updateWhenIdle={false}
         />
         
         <ZoomControl position="bottomright" />

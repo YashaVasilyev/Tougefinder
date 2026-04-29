@@ -70,7 +70,7 @@ const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, cen
           url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
           className="map-tiles-dark"
           maxZoom={20}
-          keepBuffer={8}
+          keepBuffer={16}
           updateWhenIdle={false}
         />
         

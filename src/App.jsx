@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Map as MapIcon, List, Navigation, MapPin, Loader2, ChevronUp, ChevronDown, SlidersHorizontal, Info } from 'lucide-react';
-import MapboxMap from './components/MapboxMap';
+import MapboxMap from './components/LeafletMap';
 import RoadList from './components/RoadList';
 import RoadDetail from './components/RoadDetail';
 import LocationSearch from './components/LocationSearch';
+import Terrain3D from './components/Terrain3D';
 import { fetchRoads } from './services/overpass';
 import { calculateScores } from './services/scoring';
 import { getCachedRoads, saveToCache } from './services/cache';
@@ -26,6 +27,8 @@ function App() {
   const [radius, setRadius] = useState(10);
   const [error, setError] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [show3D, setShow3D] = useState(false);
+  const [selectedRoadElevation, setSelectedRoadElevation] = useState(null);
   
   // Custom thresholds
   const [minScore, setMinScore] = useState(30);
@@ -402,11 +405,21 @@ function App() {
       {selectedRoad && (
         <RoadDetail 
           road={selectedRoad} 
-          onClose={() => {
-            setSelectedRoad(null);
             setGeneratedTurns([]);
+            setShow3D(false);
+            setSelectedRoadElevation(null);
           }} 
           onNotesGenerated={setGeneratedTurns}
+          onElevationLoaded={(data) => setSelectedRoadElevation(data.profile)}
+          onShow3D={() => setShow3D(true)}
+        />
+      )}
+
+      {selectedRoad && show3D && (
+        <Terrain3D 
+          road={selectedRoad} 
+          elevationProfile={selectedRoadElevation}
+          onClose={() => setShow3D(false)} 
         />
       )}
 

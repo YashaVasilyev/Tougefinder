@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, ExternalLink, TrendingUp, ArrowUpRight, Clock, Ruler, Clipboard, Check, ArrowRightLeft } from 'lucide-react';
+import { X, ExternalLink, TrendingUp, ArrowUpRight, Clock, Ruler, Clipboard, Check, ArrowRightLeft, Box } from 'lucide-react';
 import { fetchElevationForRoad } from '../services/elevation';
 import { generatePacenotes, getCardinalDirection } from '../services/pacenotes';
 import { clsx } from 'clsx';
@@ -9,7 +9,7 @@ function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-const RoadDetail = ({ road, onClose, onNotesGenerated }) => {
+const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoaded }) => {
   const [elevationData, setElevationData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isReversed, setIsReversed] = useState(false);
@@ -21,6 +21,7 @@ const RoadDetail = ({ road, onClose, onNotesGenerated }) => {
       setLoading(true);
       const data = await fetchElevationForRoad(road.coordinates);
       setElevationData(data);
+      if (onElevationLoaded) onElevationLoaded(data);
       setLoading(false);
     };
     loadElevation();
@@ -165,13 +166,22 @@ const RoadDetail = ({ road, onClose, onNotesGenerated }) => {
           </div>
 
           {/* Navigate Button */}
-          <button
-            onClick={handleOpenMaps}
-            className="w-full btn-primary flex items-center justify-center gap-2 py-4 text-base group"
-          >
-            <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-            Open in Maps
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={handleOpenMaps}
+              className="flex-1 btn-secondary flex items-center justify-center gap-2 text-xs py-3"
+            >
+              <ExternalLink size={14} />
+              Open in Maps
+            </button>
+            <button 
+              onClick={onShow3D}
+              className="px-4 btn-secondary flex items-center justify-center gap-2 text-xs py-3 bg-touge-500/10 border-touge-500/30 text-touge-400 hover:bg-touge-500 hover:text-white"
+            >
+              <Box size={14} />
+              3D View
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -17,19 +17,22 @@ let DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 // Helper to update map view
-const ChangeView = ({ center, zoom }) => {
+const ChangeView = ({ center, zoom, bounds }) => {
   const map = useMap();
   useEffect(() => {
+    if (bounds) {
+      map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
+      return;
+    }
     if (center) {
       const isMobile = window.innerWidth < 768;
       if (isMobile) {
-        // setView is instant and safe on mobile — flyTo can crash low-RAM devices
         map.setView([center.lat, center.lon], zoom);
       } else {
         map.flyTo([center.lat, center.lon], zoom, { animate: true, duration: 1.5 });
       }
     }
-  }, [center, zoom, map]);
+  }, [center, zoom, bounds, map]);
   return null;
 };
 
@@ -110,10 +113,9 @@ const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, cen
           />
         ))}
 
-        {selectedRoad && selectedRoad.coordinates && selectedRoad.coordinates[0] && (
+        {selectedRoad && selectedRoad.coordinates && selectedRoad.coordinates.length > 0 && (
           <ChangeView 
-            center={{ lat: selectedRoad.coordinates[0][1], lon: selectedRoad.coordinates[0][0] }} 
-            zoom={14} 
+            bounds={L.latLngBounds(selectedRoad.coordinates.map(c => [c[1], c[0]]))}
           />
         )}
 

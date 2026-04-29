@@ -130,7 +130,7 @@ const RoadDetail = ({ road, onClose }) => {
 
             <button
               onClick={() => {
-                const notes = generatePacenotes(road.coordinates, { reverse: isReversed, format: noteFormat });
+                const notes = generatePacenotes(road.coordinates, { reverse: isReversed, format: noteFormat, elevationProfile: elevationData?.profile });
                 navigator.clipboard.writeText(notes);
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);

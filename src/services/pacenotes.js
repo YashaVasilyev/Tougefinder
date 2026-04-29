@@ -11,22 +11,44 @@ const calculateRadius = (p1, p2, p3) => {
 };
 
 export const generatePacenotes = (coordinates, options = {}) => {
-  const { reverse = false, format = 'rally' } = options;
+  const { reverse = false, format = 'rally', elevationProfile = null } = options;
   let coords = reverse ? [...coordinates].reverse() : coordinates;
   
   if (coords.length < 3) return "Road too short for pacenotes.";
 
-  // --- Step 1: Resample the road to consistent 5m segments ---
-  const line = turf.lineString(coords);
-  const totalLength = turf.length(line, { units: 'meters' });
+  // --- Step 1: Pre-smoothing ---
+  const rawLine = turf.lineString(coords);
+  const smoothedLine = turf.bezierSpline(rawLine, { resolution: 10000, sharpness: 0.85 });
+
+  // --- Step 1.5: Resample the road to consistent 5m segments ---
+  const totalLength = turf.length(smoothedLine, { units: 'meters' });
   const stepSize = 5; 
   const points = [];
   for (let d = 0; d <= totalLength; d += stepSize) {
-    points.push(turf.along(line, d, { units: 'meters' }).geometry.coordinates);
+    points.push(turf.along(smoothedLine, d, { units: 'meters' }).geometry.coordinates);
   }
-  // Ensure the last point is included
   if (totalLength % stepSize !== 0) {
-    points.push(coords[coords.length - 1]);
+    points.push(turf.along(smoothedLine, totalLength, { units: 'meters' }).geometry.coordinates);
+  }
+
+  // --- Map Elevation Data (Feature 5) ---
+  const elevationFeatures = [];
+  if (elevationProfile && elevationProfile.length >= 3) {
+    let profile = reverse ? [...elevationProfile].reverse() : elevationProfile;
+    const profileStepDist = totalLength / (profile.length - 1);
+    
+    for (let i = 1; i < profile.length - 1; i++) {
+      const prev = profile[i - 1];
+      const curr = profile[i];
+      const next = profile[i + 1];
+      
+      // Require at least a 2m peak/drop to consider it a crest/dip
+      const isCrest = curr > prev && curr > next && (curr - Math.min(prev, next) > 2);
+      const isDip = curr < prev && curr < next && (Math.max(prev, next) - curr > 2);
+      
+      if (isCrest) elevationFeatures.push({ type: 'crest', distance: i * profileStepDist });
+      if (isDip) elevationFeatures.push({ type: 'dip', distance: i * profileStepDist });
+    }
   }
 
   const descriptiveMap = {
@@ -41,12 +63,9 @@ export const generatePacenotes = (coordinates, options = {}) => {
 
   const severityOrder = { 'S': 0, '5': 1, '4': 2, '3': 3, '2': 4, '1': 5, 'HP': 6 };
 
-  // --- Step 2: Initial Classification ---
-  // Use 10m spacing (2 steps of 5m) as requested
-  const lookDistance = 2;
-  let candidates = [];
-  let lastGrade = 'S';
-  let lastDir = null;
+  // --- Step 2: Initial Point-by-Point Classification ---
+  const lookDistance = 2; // 10m spacing for reactivity
+  let rawCandidates = [];
 
   for (let i = lookDistance; i < points.length - lookDistance; i++) {
     const pPrev = points[i - lookDistance];
@@ -55,7 +74,6 @@ export const generatePacenotes = (coordinates, options = {}) => {
     
     const radius = calculateRadius(pPrev, pCurr, pNext);
     
-    // Bearing diff for direction and hairpin detection
     const b1 = turf.bearing(pPrev, pCurr);
     const b2 = turf.bearing(pCurr, pNext);
     let diff = b2 - b1;
@@ -65,68 +83,114 @@ export const generatePacenotes = (coordinates, options = {}) => {
 
     let grade = 'S';
     if (absDiff > 150 && radius < 30) grade = 'HP';
-    else if (radius < 20) grade = '1'; // Sharp
-    else if (radius < 50) grade = '3'; // Tight
-    else if (radius < 150) grade = '5'; // Moderate
-    // Grade 6 (radius > 150) is treated as 'S' (Straight) to exclude it
+    else if (radius < 20) grade = '1';
+    else if (radius < 50) grade = '3';
+    else if (radius < 150) grade = '5';
 
     const dir = diff > 0 ? 'R' : 'L';
     
-    if (grade !== lastGrade || (grade !== 'S' && dir !== lastDir)) {
-      candidates.push({
-        index: i,
-        grade,
-        dir: grade === 'S' ? null : dir,
-        distance: i * stepSize
-      });
-      lastGrade = grade;
-      lastDir = grade === 'S' ? null : dir;
-    }
+    rawCandidates.push({
+      index: i,
+      grade,
+      dir: grade === 'S' ? null : dir,
+      distance: i * stepSize,
+      radius
+    });
   }
 
-  // --- Step 3: Filtering Descending Severity ---
-  // We don't care if a turn opens up; we care about the tightest part.
-  for (let i = candidates.length - 1; i > 0; i--) {
-    const current = candidates[i];
-    const prev = candidates[i - 1];
-    if (current.dir === prev.dir && severityOrder[prev.grade] >= severityOrder[current.grade] && current.grade !== 'S') {
-      candidates.splice(i, 1);
+  // --- Step 3: Identify Turn Sequences ---
+  let turns = [];
+  let currentTurn = null;
+
+  for (let i = 0; i < rawCandidates.length; i++) {
+    const pt = rawCandidates[i];
+    if (pt.grade !== 'S') {
+      if (!currentTurn) {
+        currentTurn = { startDist: pt.distance, endDist: pt.distance, dir: pt.dir, grades: [pt.grade], tightestGrade: pt.grade };
+      } else if (currentTurn.dir === pt.dir && (pt.distance - currentTurn.endDist) <= 15) { 
+        currentTurn.endDist = pt.distance;
+        currentTurn.grades.push(pt.grade);
+        if (severityOrder[pt.grade] > severityOrder[currentTurn.tightestGrade]) {
+          currentTurn.tightestGrade = pt.grade;
+        }
+      } else { 
+        turns.push(currentTurn);
+        currentTurn = { startDist: pt.distance, endDist: pt.distance, dir: pt.dir, grades: [pt.grade], tightestGrade: pt.grade };
+      }
+    } else {
+      if (currentTurn && (pt.distance - currentTurn.endDist) > 15) {
+        turns.push(currentTurn);
+        currentTurn = null;
+      }
     }
   }
+  if (currentTurn) turns.push(currentTurn);
 
-  // --- Step 4: Collapsing Ascending Severity ---
-  // If severity increases within 30m, use the higher severity for the start of the turn.
-  for (let i = candidates.length - 1; i > 0; i--) {
-    const current = candidates[i];
-    const prev = candidates[i - 1];
-    if (current.dir === prev.dir && severityOrder[current.grade] > severityOrder[prev.grade] && (current.distance - prev.distance) < 30) {
-      prev.grade = current.grade;
-      candidates.splice(i, 1);
-    }
-  }
+  // --- Step 4: Post-Process Turns (Length, Tightens/Opens) ---
+  turns.forEach(t => {
+    t.length = t.endDist - t.startDist;
+    t.isLong = t.length >= 40 && t.length < 80;
+    t.isVeryLong = t.length >= 80;
 
-  // --- Step 5: Final Formatting ---
+    const firstGrade = t.grades[0];
+    const lastGrade = t.grades[t.grades.length - 1];
+    
+    if (severityOrder[t.tightestGrade] > severityOrder[firstGrade]) t.tightens = true;
+    if (severityOrder[lastGrade] < severityOrder[t.tightestGrade] && lastGrade !== t.tightestGrade) t.opens = true;
+  });
+
+  turns = turns.filter(t => t.length >= 10 || severityOrder[t.tightestGrade] >= 3);
+
+  // --- Step 5: Final Formatting and Connectors ---
   const directionMap = {
     'R': format === 'descriptive' ? 'Right' : 'R',
     'L': format === 'descriptive' ? 'Left' : 'L'
   };
 
   const finalNotes = [];
-  let currentPos = 0;
 
-  candidates.forEach(c => {
-    if (c.grade === 'S') return; // Skip straight markers in final output
+  for (let i = 0; i < turns.length; i++) {
+    const t = turns[i];
     
-    const distToNext = Math.round((c.distance - currentPos) / 10) * 10;
-    const distStr = distToNext > 10 ? `${distToNext}m: ` : '';
-    const gradeStr = format === 'descriptive' ? descriptiveMap[c.grade] : c.grade;
-    const dirStr = directionMap[c.dir];
-    
-    finalNotes.push(`${distStr}${gradeStr} ${dirStr}`);
-    currentPos = c.distance;
-  });
+    let prefix = '';
+    if (i > 0) {
+      const distFromPrev = t.startDist - turns[i-1].endDist;
+      if (distFromPrev < 20) {
+        prefix = 'into ';
+      } else if (distFromPrev < 50) {
+        prefix = 'and ';
+      } else {
+        const distToNext = Math.round(distFromPrev / 10) * 10;
+        if (distToNext > 10) prefix = `${distToNext}m: `;
+      }
+    } else {
+      const distToNext = Math.round(t.startDist / 10) * 10;
+      if (distToNext > 10) prefix = `${distToNext}m: `;
+    }
 
-  const remainingDist = Math.round((totalLength - currentPos) / 10) * 10;
+    const gradeStr = format === 'descriptive' ? descriptiveMap[t.tightestGrade] : t.tightestGrade;
+    const dirStr = directionMap[t.dir];
+    
+    let suffix = '';
+    if (t.isVeryLong) suffix += ' very long';
+    else if (t.isLong) suffix += ' long';
+
+    if (t.tightens && t.opens) suffix += ' tightens then opens';
+    else if (t.tightens) suffix += ' tightens';
+    else if (t.opens) suffix += ' opens';
+
+    // Elevation features
+    const nearbyElevation = elevationFeatures.find(f => Math.abs(f.distance - t.startDist) < 30);
+    if (nearbyElevation) {
+      if (nearbyElevation.type === 'crest') suffix += ' over crest';
+      else if (nearbyElevation.type === 'dip') suffix += ' dip';
+    }
+
+    finalNotes.push(`${prefix}${gradeStr} ${dirStr}${suffix}`);
+  }
+
+  const lastEndDist = turns.length > 0 ? turns[turns.length - 1].endDist : 0;
+  const remainingDist = Math.round((totalLength - lastEndDist) / 10) * 10;
   if (remainingDist > 10) {
     finalNotes.push(`${remainingDist}m: End of section`);
   }

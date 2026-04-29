@@ -31,7 +31,7 @@ const RoadList = ({ roads, loading, onSelectRoad, selectedRoad }) => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.05 }}
-          onClick={() => onSelectRoad(road)}
+          onClick={(e) => onSelectRoad(road, e.shiftKey)}
           className={`group relative text-left w-full p-5 rounded-3xl transition-all duration-300 border ${
             selectedRoad?.id === road.id 
               ? 'bg-touge-600/10 border-touge-500 shadow-xl shadow-touge-900/10' 

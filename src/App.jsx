@@ -6,6 +6,7 @@ import RoadDetail from './components/RoadDetail';
 import LocationSearch from './components/LocationSearch';
 import { fetchRoads } from './services/overpass';
 import { calculateScores } from './services/scoring';
+import * as turf from '@turf/turf';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -88,6 +89,58 @@ function App() {
       setLocation(defaultLoc);
       searchNear(defaultLoc.lat, defaultLoc.lon);
       setLoading(false);
+    }
+  };
+
+  const handleSelectRoad = (road, isShift) => {
+    if (isShift && selectedRoad && selectedRoad.id !== road.id) {
+      // Combine road with selectedRoad
+      const r1 = selectedRoad.coordinates;
+      const r2 = road.coordinates;
+      
+      const d1 = turf.distance(turf.point(r1[0]), turf.point(r2[0]));
+      const d2 = turf.distance(turf.point(r1[0]), turf.point(r2[r2.length-1]));
+      const d3 = turf.distance(turf.point(r1[r1.length-1]), turf.point(r2[0]));
+      const d4 = turf.distance(turf.point(r1[r1.length-1]), turf.point(r2[r2.length-1]));
+      
+      const minDistance = Math.min(d1, d2, d3, d4);
+      let newCoords = [];
+      
+      if (minDistance === d3) {
+        newCoords = [...r1, ...r2];
+      } else if (minDistance === d4) {
+        newCoords = [...r1, ...[...r2].reverse()];
+      } else if (minDistance === d1) {
+        newCoords = [...[...r1].reverse(), ...r2];
+      } else {
+        newCoords = [...r2, ...r1];
+      }
+      
+      const combinedRoad = {
+        id: `${selectedRoad.id}-${road.id}`,
+        name: `${selectedRoad.name || 'Unnamed'} + ${road.name || 'Unnamed'}`,
+        type: road.type,
+        tags: { ...selectedRoad.tags, ...road.tags },
+        coordinates: newCoords,
+        hasMajorIntersection: road.hasMajorIntersection || selectedRoad.hasMajorIntersection,
+        residentialDensity: Math.max(road.residentialDensity || 0, selectedRoad.residentialDensity || 0),
+      };
+      
+      const [scoredCombined] = calculateScores([combinedRoad], {
+        minScore: 0, 
+        minLength: 0,
+        maxHouseDensity: 100
+      });
+      
+      if (scoredCombined) {
+        setRoads(prev => [...prev.filter(r => r.id !== selectedRoad.id && r.id !== road.id), scoredCombined]);
+        setSelectedRoad(scoredCombined);
+        setGeneratedTurns([]);
+      }
+    } else {
+      setSelectedRoad(road);
+      setGeneratedTurns([]);
+      if (window.innerWidth < 768 && !isShift) setView('map');
     }
   };
 
@@ -191,10 +244,7 @@ function App() {
           <MapboxMap 
             roads={roads} 
             selectedRoad={selectedRoad} 
-            onSelectRoad={(road) => {
-              setSelectedRoad(road);
-              setGeneratedTurns([]);
-            }}
+            onSelectRoad={handleSelectRoad}
             center={location}
             generatedTurns={generatedTurns}
           />
@@ -306,11 +356,7 @@ function App() {
               <RoadList 
                 roads={roads} 
                 loading={loading} 
-                onSelectRoad={(road) => {
-                  setSelectedRoad(road);
-                  setGeneratedTurns([]);
-                  if (window.innerWidth < 768) setView('map');
-                }}
+                onSelectRoad={handleSelectRoad}
                 selectedRoad={selectedRoad}
               />
             </div>

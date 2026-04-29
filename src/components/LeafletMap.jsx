@@ -75,7 +75,7 @@ const LeafletMap = ({ roads, selectedRoad, onSelectRoad, center, generatedTurns 
               lineJoin: 'round'
             }}
             eventHandlers={{
-              click: () => onSelectRoad(road)
+              click: (e) => onSelectRoad(road, e.originalEvent.shiftKey)
             }}
           />
         ))}

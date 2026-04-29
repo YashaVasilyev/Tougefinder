@@ -97,7 +97,7 @@ const RoadLine = ({ roadCoords, gridData, elevationProfile, heightScale }) => {
       const elev = sampleGrid(lat, lon);
       const y = ((elev - minE) / range) * heightScale + 0.6;
 
-      return new THREE.Vector3(x, y, -z);
+      return new THREE.Vector3(x, y, z);
     });
   }, [roadCoords, minLat, maxLat, minLon, maxLon, minE, range, heightScale, grid]);
 

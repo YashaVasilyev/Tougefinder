@@ -69,6 +69,7 @@ export const generatePacenotes = (coordinates, options = {}) => {
 
   const descriptiveMap = {
     'HP': 'Hairpin',
+    'Square': 'Square',
     '1': 'Sharp',
     '2': 'Sharp',
     '3': 'Tight',
@@ -77,7 +78,7 @@ export const generatePacenotes = (coordinates, options = {}) => {
     'S': 'Straight'
   };
 
-  const severityOrder = { 'S': 0, '5': 1, '4': 2, '3': 3, '2': 4, '1': 5, 'HP': 6 };
+  const severityOrder = { 'S': 0, '5': 1, '4': 2, '3': 3, '2': 4, '1': 5, 'Square': 6, 'HP': 7 };
 
   // --- Step 2: Initial Point-by-Point Classification ---
   const lookDistance = 2; // 10m spacing
@@ -168,6 +169,11 @@ export const generatePacenotes = (coordinates, options = {}) => {
       if (Math.abs(totalDiff) > 130 && severityOrder[t.tightestGrade] >= severityOrder['3']) {
         t.tightestGrade = 'HP';
         t.grades = t.grades.map(() => 'HP'); // suppress tightens/opens for HP
+      } 
+      // If bearing changes ~90° and it is a 1-grade turn, upgrade to Square
+      else if (Math.abs(totalDiff) >= 70 && Math.abs(totalDiff) <= 115 && t.tightestGrade === '1') {
+        t.tightestGrade = 'Square';
+        t.grades = t.grades.map(() => 'Square');
       }
     }
 

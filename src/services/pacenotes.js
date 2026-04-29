@@ -101,7 +101,7 @@ export const generatePacenotes = (coordinates, options = {}) => {
     // Removed point-level HP detection to prevent premature splitting, handled in Step 4
     if (radius < 20) grade = '1';
     else if (radius < 50) grade = '3';
-    else if (radius < 150) grade = '5';
+    else if (radius < 80) grade = '5';
 
     const dir = diff > 0 ? 'R' : 'L';
     
@@ -173,9 +173,6 @@ export const generatePacenotes = (coordinates, options = {}) => {
 
     const firstGrade = t.grades[0];
     const lastGrade = t.grades[t.grades.length - 1];
-    
-    if (severityOrder[t.tightestGrade] > severityOrder[firstGrade] && t.tightestGrade !== 'HP') t.tightens = true;
-    if (severityOrder[lastGrade] < severityOrder[t.tightestGrade] && lastGrade !== t.tightestGrade && t.tightestGrade !== 'HP') t.opens = true;
   });
 
   turns = turns.filter(t => t.length >= 10 || severityOrder[t.tightestGrade] >= 3);
@@ -215,10 +212,6 @@ export const generatePacenotes = (coordinates, options = {}) => {
     if (t.isVeryLong) suffix += ' very long';
     else if (t.isLong) suffix += ' long';
 
-    if (t.tightens && t.opens) suffix += ' tightens then opens';
-    else if (t.tightens) suffix += ' tightens';
-    else if (t.opens) suffix += ' opens';
-
     // Elevation features
     const nearbyElevation = elevationFeatures.find(f => Math.abs(f.distance - t.startDist) < 30);
     if (nearbyElevation) {
@@ -229,7 +222,9 @@ export const generatePacenotes = (coordinates, options = {}) => {
     const turnText = `${gradeStr} ${dirStr}${suffix}`;
     finalNotes.push(`${prefix}${turnText}`);
 
-    const coordIndex = Math.round(t.startDist / stepSize);
+    // Place the marker at the apex of the turn instead of the start
+    const apexDist = t.startDist + (t.length / 2);
+    const coordIndex = Math.round(apexDist / stepSize);
     finalTurns.push({
       text: turnText,
       coordinate: points[Math.min(coordIndex, points.length - 1)]

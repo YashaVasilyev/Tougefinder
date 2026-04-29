@@ -15,6 +15,33 @@ const RoadDetail = ({ road, onClose, onNotesGenerated }) => {
   const [isReversed, setIsReversed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [noteFormat, setNoteFormat] = useState('rally');
+  const [hasGenerated, setHasGenerated] = useState(false);
+
+  const handleGenerate = (copyToClipboard = false) => {
+    const { text, turns } = generatePacenotes(road.coordinates, { 
+      reverse: isReversed, 
+      format: noteFormat, 
+      elevationProfile: elevationData?.profile,
+      returnObject: true
+    });
+    
+    if (copyToClipboard) {
+      navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+    
+    setHasGenerated(true);
+    if (onNotesGenerated) {
+      onNotesGenerated(turns);
+    }
+  };
+
+  useEffect(() => {
+    if (hasGenerated) {
+      handleGenerate(false);
+    }
+  }, [isReversed, noteFormat, elevationData]);
 
   useEffect(() => {
     const loadElevation = async () => {
@@ -129,20 +156,7 @@ const RoadDetail = ({ road, onClose, onNotesGenerated }) => {
             </div>
 
             <button
-              onClick={() => {
-                const { text, turns } = generatePacenotes(road.coordinates, { 
-                  reverse: isReversed, 
-                  format: noteFormat, 
-                  elevationProfile: elevationData?.profile,
-                  returnObject: true
-                });
-                navigator.clipboard.writeText(text);
-                setCopied(true);
-                if (onNotesGenerated) {
-                  onNotesGenerated(turns);
-                }
-                setTimeout(() => setCopied(false), 2000);
-              }}
+              onClick={() => handleGenerate(true)}
               className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
             >
               {copied ? (

@@ -53,7 +53,7 @@ const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, cen
         zoom={zoom} 
         scrollWheelZoom={false}
         smoothWheelZoom={true}
-        smoothSensitivity={1}
+        smoothSensitivity={3}
         zoomSnap={0}
         zoomDelta={0.25}
         inertia={true}

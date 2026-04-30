@@ -107,23 +107,30 @@ export const fetchTerrainGrid = async (coordinates, resolution = 80) => {
     const canvasMaxLat = tileToLat(tileMinY, zoom);
     const canvasMinLat = tileToLat(tileMaxY + 1, zoom);
 
+    const stitchedData = ctx.getImageData(0, 0, totalWidth, totalHeight).data;
+
+    // World bounds of the stitched canvas
+    const canvasMinLon = tileToLon(tileMinX, zoom);
+    const canvasMaxLon = tileToLon(tileMaxX + 1, zoom);
+    const canvasMaxLat = tileToLat(tileMinY, zoom);
+    const canvasMinLat = tileToLat(tileMaxY + 1, zoom);
+
     // Sample a grid from the canvas
     const grid = [];
     for (let i = 0; i < resolution; i++) {
       grid[i] = [];
       const lat = paddedMinLat + (i / (resolution - 1)) * (paddedMaxLat - paddedMinLat);
+      const py = Math.floor(((canvasMaxLat - lat) / (canvasMaxLat - canvasMinLat)) * totalHeight);
+      const safeY = Math.max(0, Math.min(totalHeight - 1, py));
+      
       for (let j = 0; j < resolution; j++) {
         const lon = paddedMinLon + (j / (resolution - 1)) * (paddedMaxLon - paddedMinLon);
-
         const px = Math.floor(((lon - canvasMinLon) / (canvasMaxLon - canvasMinLon)) * totalWidth);
-        const py = Math.floor(((canvasMaxLat - lat) / (canvasMaxLat - canvasMinLat)) * totalHeight);
-
         const safeX = Math.max(0, Math.min(totalWidth - 1, px));
-        const safeY = Math.max(0, Math.min(totalHeight - 1, py));
 
-        const pixel = ctx.getImageData(safeX, safeY, 1, 1).data;
+        const dataIdx = (safeY * totalWidth + safeX) * 4;
         // Terrarium decode
-        const elevation = (pixel[0] * 256 + pixel[1] + pixel[2] / 256) - 32768;
+        const elevation = (stitchedData[dataIdx] * 256 + stitchedData[dataIdx+1] + stitchedData[dataIdx+2] / 256) - 32768;
         grid[i][j] = elevation;
       }
     }

@@ -30,18 +30,8 @@ function makeSampler(grid, minLat, maxLat, minLon, maxLon) {
   };
 }
 
-// ─── Distance to segment helper ──────────────────────────────────────────────
-function distToSegmentSq(p, v, w) {
-  const l2 = v.distanceToSquared(w);
-  if (l2 === 0) return p.distanceToSquared(v);
-  let t = ((p.x - v.x) * (w.x - v.x) + (p.z - v.z) * (w.z - v.z)) / l2;
-  t = Math.max(0, Math.min(1, t));
-  return p.distanceToSquared(new THREE.Vector3(v.x + t * (w.x - v.x), 0, v.z + t * (w.z - v.z)));
-}
-
 function getNearestPointOnRoad(p, roadPoints) {
   let minDistSq = Infinity;
-  let nearest = null;
   let nearestIdx = 0;
   let tParam = 0;
 
@@ -93,7 +83,7 @@ function computeSpeedProfile(points) {
   return mult.map(v=>v/mean);
 }
 
-// ─── Turn markers from geo coordinates (radius method, matching pacenotes.js) ─
+// ─── Turn markers ─────────────────────────────────────────────────────────────
 function computeTurnMarkers(coords) {
   if (coords.length < 5) return [];
   const cumd = [0];
@@ -104,21 +94,18 @@ function computeTurnMarkers(coords) {
   let lastMarkerDist = -minGapM;
   const STEP = 2;
   for (let i=STEP; i<coords.length-STEP; i++) {
-    const a=coords[i-STEP], b=coords[i], c=coords[i+STEP];
-    const ab=haversine(a,b), bc=haversine(b,c), ac=haversine(a,c);
+    const ab=haversine(coords[i-STEP],coords[i]), bc=haversine(coords[i],coords[i+STEP]), ac=haversine(coords[i-STEP],coords[i+STEP]);
     const s=(ab+bc+ac)/2;
     const areaSq=Math.max(0,s*(s-ab)*(s-bc)*(s-ac));
     const radius = areaSq<=0 ? Infinity : (ab*bc*ac)/(4*Math.sqrt(areaSq));
     let label=null, color=null;
-    if      (radius < 15)  { label='HP'; color='#ef4444'; }
-    else if (radius < 25)  { label='K1'; color='#ef4444'; }
-    else if (radius < 50)  { label='K2'; color='#f97316'; }
+    if (radius < 15) { label='HP'; color='#ef4444'; }
+    else if (radius < 25) { label='K1'; color='#ef4444'; }
+    else if (radius < 50) { label='K2'; color='#f97316'; }
     else if (radius < 100) { label='K3'; color='#facc15'; }
     if (label && cumd[i]-lastMarkerDist >= minGapM) {
-      const cross=(coords[i][0]-coords[i-1][0])*(coords[i+1][1]-coords[i-1][1])
-                 -(coords[i][1]-coords[i-1][1])*(coords[i+1][0]-coords[i-1][0]);
-      const dir = cross > 0 ? 'R' : 'L';
-      markers.push({ progress: cumd[i]/totalLen, label, color, dir, radius: Math.round(radius) });
+      const cross=(coords[i][0]-coords[i-1][0])*(coords[i+1][1]-coords[i-1][1])-(coords[i][1]-coords[i-1][1])*(coords[i+1][0]-coords[i-1][0]);
+      markers.push({ progress: cumd[i]/totalLen, label, color, dir: cross>0?'R':'L', radius: Math.round(radius) });
       lastMarkerDist = cumd[i];
     }
   }
@@ -126,7 +113,7 @@ function computeTurnMarkers(coords) {
 }
 
 // ─── Three.js components ──────────────────────────────────────────────────────
-const TerrainMesh = ({ gridData, heightScale, roadPoints }) => {
+const TerrainMesh = ({ gridData, heightScale, roadPoints, roadTexture }) => {
   const { grid } = gridData;
   const res = grid.length;
   const { minE, maxE } = useMemo(()=>{ const f=grid.flat(); return{minE:Math.min(...f),maxE:Math.max(...f)}; },[grid]);
@@ -134,48 +121,47 @@ const TerrainMesh = ({ gridData, heightScale, roadPoints }) => {
   const geometry = useMemo(()=>{
     const geo = new THREE.PlaneGeometry(100, 100, res - 1, res - 1);
     const pos = geo.attributes.position.array;
-    const colors = new Float32Array(pos.length);
     const range = maxE - minE || 100;
     
     const ROAD_WIDTH = 0.8;
     const SHOULDER_WIDTH = 1.6;
-    const roadCol = new THREE.Color('#1a1a1a');
-    const terrainCol = new THREE.Color('#2d2d35');
-    const shoulderCol = new THREE.Color('#3a3a45');
 
     for (let i = 0; i < res; i++) {
       for (let j = 0; j < res; j++) {
         const index = (i * res + j) * 3;
         const vx = pos[index];
-        const vz = pos[index + 1]; // PlaneGeometry uses Y as Z before rotation
-        const originalY = ((grid[i][j] - minE) / range) * heightScale;
+        const vy = pos[index + 1]; // Plane Y
         
-        let finalY = originalY;
-        let finalCol = terrainCol;
+        // Height mapping: i=0 is minLat, corresponds to Plane Y=50 (Z_world = -50)
+        // Wait, if grid[i] is minLat, and i increases with Lat, and we want i=0 at South (-50).
+        // Plane Y=50 is North (if rotate -90). So i=0 should be Plane Y=-50?
+        // Let's keep it simple: grid[i][j] where i is North-South.
+        // If i=0 is South, i=res-1 is North.
+        // Plane vertices: i=0 is y=50 (North), i=res-1 is y=-50 (South).
+        // So gridI = (res - 1) - i.
+        const gridI = (res - 1) - i;
+        const originalHeight = ((grid[gridI][j] - minE) / range) * heightScale;
+        
+        let finalY = originalHeight;
 
         if (roadPoints && roadPoints.length > 1) {
-          const nearest = getNearestPointOnRoad({ x: vx, z: vz }, roadPoints);
+          // World coordinates: roadPoints.z is Lat.
+          // Plane Y=50 is North (Z_world=50? No, if rotate -90, Y=50 is Z=-50).
+          // Let's fix rotation to +90 so Y=50 is North (Z=50).
+          const nearest = getNearestPointOnRoad({ x: vx, z: vy }, roadPoints);
           if (nearest) {
             const dist = Math.sqrt(nearest.distSq);
             if (dist < ROAD_WIDTH) {
               finalY = nearest.point.y;
-              finalCol = roadCol;
             } else if (dist < SHOULDER_WIDTH) {
               const t = (dist - ROAD_WIDTH) / (SHOULDER_WIDTH - ROAD_WIDTH);
-              finalY = THREE.MathUtils.lerp(nearest.point.y, originalY, t);
-              finalCol = new THREE.Color().lerpColors(roadCol, terrainCol, t);
+              finalY = THREE.MathUtils.lerp(nearest.point.y, originalHeight, t);
             }
           }
         }
-
         pos[index + 2] = finalY;
-        colors[index] = finalCol.r;
-        colors[index + 1] = finalCol.g;
-        colors[index + 2] = finalCol.b;
       }
     }
-    
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
     geo.attributes.position.needsUpdate = true;
     return geo;
@@ -183,13 +169,17 @@ const TerrainMesh = ({ gridData, heightScale, roadPoints }) => {
 
   return (
     <mesh geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-      <meshStandardMaterial vertexColors={true} roughness={0.8} metalness={0.05} flatShading={false} />
+      <meshStandardMaterial 
+        map={roadTexture} 
+        roughness={0.8} 
+        metalness={0.05} 
+        flatShading={false} 
+      />
       <gridHelper args={[100, 20, '#2a2a35', '#1a1a22']} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.01]} />
     </mesh>
   );
 };
 
-// RoadLine is now invisible but still used to compute roadPoints for flyover and mesh carving
 const RoadLine = ({ roadCoords, gridData, heightScale, onPoints }) => {
   const { grid, minLat, maxLat, minLon, maxLon } = gridData;
   const minE = useMemo(() => Math.min(...grid.flat()), [grid]);
@@ -199,14 +189,16 @@ const RoadLine = ({ roadCoords, gridData, heightScale, onPoints }) => {
   
   const points = useMemo(() => roadCoords.map(c => {
     const x = ((c[0] - minLon) / (maxLon - minLon)) * 100 - 50;
+    // Lat -> Z. We use Z mapping that matches Plane Y after rotation.
+    // Plane Y=50 is i=0 (maxLat). Plane Y=-50 is i=res-1 (minLat).
+    // So Z = ((lat - minLat) / (maxLat - minLat)) * 100 - 50;
     const z = ((c[1] - minLat) / (maxLat - minLat)) * 100 - 50;
-    const y = ((sample(c[1], c[0]) - minE) / range) * heightScale + 0.1; // Slight lift for road points
+    const y = ((sample(c[1], c[0]) - minE) / range) * heightScale + 0.05;
     return new THREE.Vector3(x, y, z);
   }), [roadCoords, minLat, maxLat, minLon, maxLon, minE, range, heightScale, sample]);
   
   useEffect(() => { if (onPoints) onPoints(points); }, [points, onPoints]);
-  
-  return null; // Road is now part of the mesh
+  return null;
 };
 
 const FlyoverCamera = ({ roadPoints, progress }) => {
@@ -216,7 +208,11 @@ const FlyoverCamera = ({ roadPoints, progress }) => {
     const curve=new THREE.CatmullRomCurve3(roadPoints);
     const t=Math.min(progress, 0.9999), tL=Math.min(t+0.025, 0.9999);
     const pos=curve.getPointAt(t), look=curve.getPointAt(tL);
-    camera.position.set(pos.x, pos.y + 3, pos.z); // Slightly lower for painted road
+    // RoadPoints Z is Lat. 
+    // Mesh is rotated -90 around X. Plane Y becomes World Z.
+    // Plane Y goes 50 to -50. So World Z goes -50 to 50.
+    // This matches RoadPoints Z (Lat)!
+    camera.position.set(pos.x, pos.y + 3.5, pos.z);
     camera.lookAt(look.x, look.y + 1.5, look.z);
   },[progress, roadPoints, camera]);
   return null;
@@ -225,7 +221,6 @@ const FlyoverCamera = ({ roadPoints, progress }) => {
 // ─── Scrollable progress bar ──────────────────────────────────────────────────
 const BAR_WIDTH = 1200;
 const SEGMENTS  = 200;
-
 const FlyoverBar = ({ progress, speedProfile, turnMarkers, onSeek }) => {
   const scrollRef = useRef(null);
   useEffect(()=>{
@@ -258,8 +253,7 @@ const FlyoverBar = ({ progress, speedProfile, turnMarkers, onSeek }) => {
         {turnMarkers.map((m,i)=>(
           <div key={i} style={{position:'absolute',bottom:0,left:`${m.progress*100}%`,transform:'translateX(-50%)',display:'flex',flexDirection:'column',alignItems:'center'}}>
             <div style={{fontSize:8,fontWeight:700,color:m.color,lineHeight:1.1,textShadow:'0 1px 4px #000',fontFamily:'monospace',marginBottom:2,whiteSpace:'nowrap',letterSpacing:'0.05em'}}>{m.dir}{m.label}</div>
-            <div style={{width:1.5,height:14,background:m.color,opacity:0.8,borderRadius:1}}/>
-            <div style={{width:1.5,height:8,background:m.color,opacity:0.8,borderRadius:1}}/>
+            <div style={{width:1.5,height:14,background:m.color,opacity:0.8,borderRadius:1}}/><div style={{width:1.5,height:8,background:m.color,opacity:0.8,borderRadius:1}}/>
           </div>
         ))}
         <div style={{position:'absolute',bottom:-2,left:`${progress*100}%`,transform:'translateX(-50%)',width:2,height:14,background:'white',borderRadius:2,boxShadow:'0 0 6px #fff'}}/>
@@ -292,6 +286,41 @@ const Terrain3D = ({ road, onClose }) => {
     const load=async()=>{ setLoading(true); setGridData(await fetchTerrainGrid(road.coordinates)); setLoading(false); };
     load();
   },[road]);
+
+  const roadTexture = useMemo(() => {
+    if (!gridData || !road.coordinates) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 2048;
+    canvas.height = 2048;
+    const ctx = canvas.getContext('2d');
+    
+    // Background
+    ctx.fillStyle = '#2d2d35';
+    ctx.fillRect(0, 0, 2048, 2048);
+    
+    // Road Path
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 14; 
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    const { minLat, maxLat, minLon, maxLon } = gridData;
+    ctx.beginPath();
+    road.coordinates.forEach((c, idx) => {
+      const u = (c[0] - minLon) / (maxLon - minLon);
+      const v = (c[1] - minLat) / (maxLat - minLat);
+      // u maps to x, v maps to y (canvas 0 is top)
+      const cx = u * 2048;
+      const cy = (1 - v) * 2048;
+      if (idx === 0) ctx.moveTo(cx, cy);
+      else ctx.lineTo(cx, cy);
+    });
+    ctx.stroke();
+    
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.anisotropy = 16;
+    return tex;
+  }, [road, gridData]);
 
   useEffect(()=>{
     if (!road?.coordinates?.length) return;
@@ -361,12 +390,11 @@ const Terrain3D = ({ road, onClose }) => {
             <Stars radius={300} depth={60} count={10000} factor={7} saturation={0} fade speed={1}/>
             <color attach="background" args={['#020205']}/>
             <ambientLight intensity={0.5}/><pointLight position={[100,150,100]} intensity={2} castShadow/><spotLight position={[-100,100,-100]} intensity={1}/>
-            <TerrainMesh gridData={gridData} heightScale={heightScale} roadPoints={roadPoints} />
+            <TerrainMesh gridData={gridData} heightScale={heightScale} roadPoints={roadPoints} roadTexture={roadTexture} />
             <RoadLine roadCoords={road.coordinates} gridData={gridData} heightScale={heightScale} onPoints={setRoadPoints}/>
             <Environment preset="city"/>
             {!flyoverActive && <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}><Text position={[0,heightScale+20,0]} rotation={[0,Math.PI,0]} fontSize={5} color="#facc15" anchorX="center" anchorY="middle" maxWidth={100} textAlign="center">{road.name?.toUpperCase()||'UNNAMED TOUGE'}</Text></Float>}
           </Canvas>
-
           <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-2">
             {flyoverActive && (
               <div className="p-3 bg-black/70 backdrop-blur border border-white/10 rounded-xl pointer-events-auto">

@@ -109,12 +109,6 @@ export const fetchTerrainGrid = async (coordinates, resolution = 80) => {
 
     const stitchedData = ctx.getImageData(0, 0, totalWidth, totalHeight).data;
 
-    // World bounds of the stitched canvas
-    const canvasMinLon = tileToLon(tileMinX, zoom);
-    const canvasMaxLon = tileToLon(tileMaxX + 1, zoom);
-    const canvasMaxLat = tileToLat(tileMinY, zoom);
-    const canvasMinLat = tileToLat(tileMaxY + 1, zoom);
-
     // Sample a grid from the canvas
     const grid = [];
     for (let i = 0; i < resolution; i++) {

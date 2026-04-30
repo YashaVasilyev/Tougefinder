@@ -298,22 +298,35 @@ const Terrain3D = ({ road, onClose }) => {
     ctx.fillStyle = '#2d2d35';
     ctx.fillRect(0, 0, 2048, 2048);
     
-    // Road Path
-    ctx.strokeStyle = '#1a1a1a';
-    ctx.lineWidth = 14; 
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    
     const { minLat, maxLat, minLon, maxLon } = gridData;
-    ctx.beginPath();
-    road.coordinates.forEach((c, idx) => {
+    const project = (c) => {
       const u = (c[0] - minLon) / (maxLon - minLon);
       const v = (c[1] - minLat) / (maxLat - minLat);
-      // u maps to x, v maps to y (canvas 0 is top)
-      const cx = u * 2048;
-      const cy = (1 - v) * 2048;
-      if (idx === 0) ctx.moveTo(cx, cy);
-      else ctx.lineTo(cx, cy);
+      return { x: u * 2048, y: (1 - v) * 2048 };
+    };
+
+    // Asphalt Base
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 18; 
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    road.coordinates.forEach((c, idx) => {
+      const p = project(c);
+      if (idx === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.stroke();
+
+    // Yellow Centerline
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([10, 8]); // Dashed line for realism
+    ctx.beginPath();
+    road.coordinates.forEach((c, idx) => {
+      const p = project(c);
+      if (idx === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
     });
     ctx.stroke();
     

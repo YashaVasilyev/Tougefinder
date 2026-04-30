@@ -50,7 +50,7 @@ const tileToLat = (y, z) => {
   return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
 };
 
-export const fetchTerrainGrid = async (coordinates, resolution = 50) => {
+export const fetchTerrainGrid = async (coordinates, resolution = 80) => {
   const lats = coordinates.map(c => c[1]);
   const lons = coordinates.map(c => c[0]);
   const minLat = Math.min(...lats);

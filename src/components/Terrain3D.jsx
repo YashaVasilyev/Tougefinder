@@ -210,7 +210,7 @@ const Terrain3D = ({ road, onClose }) => {
   const [gridData, setGridData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [heightScale, setHeightScale] = useState(30);
+  const [heightScale, setHeightScale] = useState(7);
   const [roadPoints, setRoadPoints] = useState(null);
   const [flyoverActive, setFlyoverActive] = useState(false);
   const [flyoverPlaying, setFlyoverPlaying] = useState(false);

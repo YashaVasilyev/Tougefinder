@@ -82,17 +82,50 @@ function computeTurnMarkers(coords) {
 }
 
 // ─── Three.js components ──────────────────────────────────────────────────────
-const TerrainMesh = ({ gridData, heightScale, displacementMap, roadTexture }) => {
-  const resolution = 512; 
-  const geometry = useMemo(() => new THREE.PlaneGeometry(100, 100, resolution - 1, resolution - 1), [resolution]);
+// ─── Slippy map lat/lon to tile helpers ──────────────────────────────────────
+const lon2tile = (lon, zoom) => (lon + 180) / 360 * Math.pow(2, zoom);
+const lat2tile = (lat, zoom) => (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom);
+
+// ─── Three.js components ──────────────────────────────────────────────────────
+const TerrainMesh = ({ gridData, heightScale, roadTexture }) => {
+  const resolution = 256; 
+  const geometry = useMemo(() => {
+    if (!gridData) return null;
+    const geom = new THREE.PlaneGeometry(100, 100, resolution - 1, resolution - 1);
+    const { grid, minLat, maxLat, minLon, maxLon } = gridData;
+    const flatGrid = grid.flat();
+    const minE = Math.min(...flatGrid);
+    const maxE = Math.max(...flatGrid);
+    const range = maxE - minE || 100;
+    
+    const sample = makeSampler(grid, minLat, maxLat, minLon, maxLon);
+    const posAttr = geom.attributes.position;
+    
+    for (let i = 0; i < posAttr.count; i++) {
+      const u = geom.attributes.uv.getX(i);
+      const v = geom.attributes.uv.getY(i);
+      
+      const lon = minLon + u * (maxLon - minLon);
+      const lat = minLat + v * (maxLat - minLat);
+      
+      const elev = sample(lat, lon);
+      const height = ((elev - minE) / range) * heightScale;
+      
+      posAttr.setZ(i, height);
+    }
+    
+    geom.computeVertexNormals();
+    return geom;
+  }, [gridData, heightScale, resolution]);
+
+  if (!geometry) return null;
+
   return (
-    <mesh geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+    <mesh geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} receiveShadow castShadow>
       <meshStandardMaterial 
         map={roadTexture} 
-        displacementMap={displacementMap}
-        displacementScale={heightScale}
         roughness={0.8} 
-        metalness={0.05} 
+        metalness={0.1} 
         flatShading={false} 
       />
       <gridHelper args={[100, 20, '#2a2a35', '#1a1a22']} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.01]} />
@@ -186,94 +219,168 @@ const Terrain3D = ({ road, onClose }) => {
   const [speedProfile, setSpeedProfile] = useState(null);
   const [baseProgressPerMs, setBaseProgressPerMs] = useState(null);
   const [turnMarkers, setTurnMarkers] = useState([]);
+  const [textures, setTextures] = useState({ roadTexture: null });
   const animRef = useRef(null);
   const lastTimeRef = useRef(null);
 
   useEffect(()=>{
-    const load=async()=>{ setLoading(true); setGridData(await fetchTerrainGrid(road.coordinates, 256)); setLoading(false); };
+    const load=async()=>{ 
+      setLoading(true); 
+      const data = await fetchTerrainGrid(road.coordinates, 256);
+      setGridData(data); 
+    };
     load();
   },[road]);
 
-  const textures = useMemo(() => {
-    if (!gridData || !road.coordinates) return { roadTexture: null, displacementMap: null };
-    
-    const RES = 2048;
-    const { minLat, maxLat, minLon, maxLon, grid } = gridData;
-    const flatGrid = grid.flat();
-    const minE = Math.min(...flatGrid);
-    const maxE = Math.max(...flatGrid);
-    const range = maxE - minE || 100;
-    const gridRes = grid.length;
+  useEffect(() => {
+    if (!gridData || !road.coordinates) return;
 
-    const sampleGrid = (u, v) => {
-      const col = u * (gridRes - 1);
-      const row = v * (gridRes - 1);
-      const c0 = Math.max(0, Math.min(gridRes - 2, Math.floor(col)));
-      const r0 = Math.max(0, Math.min(gridRes - 2, Math.floor(row)));
-      const fc = col - c0, fr = row - r0;
-      return grid[r0][c0]*(1-fr)*(1-fc)+grid[r0][c0+1]*(1-fr)*fc + grid[r0+1][c0]*fr*(1-fc)+grid[r0+1][c0+1]*fr*fc;
+    let active = true;
+
+    const loadMapAndGenerateTextures = async () => {
+      const RES = 2048;
+      const { minLat, maxLat, minLon, maxLon, grid } = gridData;
+      const gridRes = grid.length;
+
+      const sampleGrid = (u, v) => {
+        const col = u * (gridRes - 1);
+        const row = v * (gridRes - 1);
+        const c0 = Math.max(0, Math.min(gridRes - 2, Math.floor(col)));
+        const r0 = Math.max(0, Math.min(gridRes - 2, Math.floor(row)));
+        const fc = col - c0, fr = row - r0;
+        return grid[r0][c0]*(1-fr)*(1-fc)+grid[r0][c0+1]*(1-fr)*fc + grid[r0+1][c0]*fr*(1-fc)+grid[r0+1][c0+1]*fr*fc;
+      };
+
+      const cCanvas = document.createElement('canvas'); cCanvas.width = RES; cCanvas.height = RES;
+      const cCtx = cCanvas.getContext('2d');
+      
+      // Default fallbacks
+      cCtx.fillStyle = '#111115'; 
+      cCtx.fillRect(0, 0, RES, RES);
+      
+      const gridWidthM = haversine([minLon, minLat], [maxLon, minLat]);
+      const metersToPixels = RES / gridWidthM;
+      const roadWidthPixels = 8 * metersToPixels;
+      const lineWidthPixels = 0.1 * metersToPixels;
+
+      const project = (c) => ({
+        x: ((c[0] - minLon) / (maxLon - minLon)) * RES,
+        y: (1 - ((c[1] - minLat) / (maxLat - minLat))) * RES
+      });
+
+      // Try fetching map tiles
+      try {
+        let z = 16;
+        let xMinTile, xMaxTile, yMinTile, yMaxTile;
+        while (z >= 10) {
+          const xStart = Math.floor(lon2tile(minLon, z));
+          const xEnd = Math.floor(lon2tile(maxLon, z));
+          const yStart = Math.floor(lat2tile(maxLat, z));
+          const yEnd = Math.floor(lat2tile(minLat, z));
+          xMinTile = Math.min(xStart, xEnd);
+          xMaxTile = Math.max(xStart, xEnd);
+          yMinTile = Math.min(yStart, yEnd);
+          yMaxTile = Math.max(yStart, yEnd);
+          
+          const w = xMaxTile - xMinTile + 1;
+          const h = yMaxTile - yMinTile + 1;
+          if (w <= 6 && h <= 6) {
+            break;
+          }
+          z--;
+        }
+
+        const tilesToLoad = [];
+        for (let xTile = xMinTile; xTile <= xMaxTile; xTile++) {
+          for (let yTile = yMinTile; yTile <= yMaxTile; yTile++) {
+            tilesToLoad.push({ x: xTile, y: yTile });
+          }
+        }
+
+        const loadedTiles = await Promise.all(
+          tilesToLoad.map(({ x, y }) => {
+            return new Promise((resolve) => {
+              const img = new Image();
+              img.crossOrigin = 'anonymous';
+              img.onload = () => resolve({ x, y, img, success: true });
+              img.onerror = () => resolve({ x, y, success: false });
+              img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${z}/${y}/${x}`;
+            });
+          })
+        );
+
+        if (active) {
+          const sWidth = (xMaxTile - xMinTile + 1) * 256;
+          const sHeight = (yMaxTile - yMinTile + 1) * 256;
+          const tileCanvas = document.createElement('canvas');
+          tileCanvas.width = sWidth;
+          tileCanvas.height = sHeight;
+          const tileCtx = tileCanvas.getContext('2d');
+          
+          tileCtx.fillStyle = '#f4f3f0';
+          tileCtx.fillRect(0, 0, sWidth, sHeight);
+
+          loadedTiles.forEach(({ x, y, img, success }) => {
+            if (success) {
+              const dx = (x - xMinTile) * 256;
+              const dy = (y - yMinTile) * 256;
+              tileCtx.drawImage(img, dx, dy);
+            }
+          });
+
+          const xMinFraction = lon2tile(minLon, z);
+          const xMaxFraction = lon2tile(maxLon, z);
+          const yMinFraction = lat2tile(maxLat, z);
+          const yMaxFraction = lat2tile(minLat, z);
+
+          const srcX = (xMinFraction - xMinTile) * 256;
+          const srcY = (yMinFraction - yMinTile) * 256;
+          const srcW = (xMaxFraction - xMinFraction) * 256;
+          const srcH = (yMaxFraction - yMinFraction) * 256;
+
+          cCtx.imageSmoothingEnabled = true;
+          cCtx.imageSmoothingQuality = 'high';
+          cCtx.filter = 'invert(100%) hue-rotate(180deg) brightness(85%) contrast(95%)';
+          cCtx.drawImage(tileCanvas, srcX, srcY, srcW, srcH, 0, 0, RES, RES);
+          cCtx.filter = 'none';
+        }
+      } catch (err) {
+        console.error("Error overlaying map tiles:", err);
+        cCtx.fillStyle = '#111115';
+        cCtx.fillRect(0, 0, RES, RES);
+      }
+
+      if (!active) return;
+
+      // ─── Paint road color ───
+      cCtx.strokeStyle = '#1e1e24'; cCtx.lineWidth = roadWidthPixels; 
+      cCtx.lineCap = 'round'; cCtx.lineJoin = 'round';
+      cCtx.beginPath(); road.coordinates.forEach((c, idx) => {
+        const p = project(c); if (idx === 0) cCtx.moveTo(p.x, p.y); else cCtx.lineTo(p.x, p.y);
+      });
+      cCtx.stroke();
+
+      // Yellow Line
+      cCtx.strokeStyle = '#facc15'; cCtx.lineWidth = Math.max(2, lineWidthPixels);
+      cCtx.setLineDash([]); cCtx.beginPath();
+      road.coordinates.forEach((c, idx) => {
+        const p = project(c); if (idx === 0) cCtx.moveTo(p.x, p.y); else cCtx.lineTo(p.x, p.y);
+      });
+      cCtx.stroke();
+
+      const roadTex = new THREE.CanvasTexture(cCanvas); roadTex.anisotropy = 16;
+      
+      if (active) {
+        setTextures({ roadTexture: roadTex });
+        setLoading(false);
+      }
     };
 
-    const dCanvas = document.createElement('canvas'); dCanvas.width = RES; dCanvas.height = RES;
-    const dCtx = dCanvas.getContext('2d');
-    const dData = dCtx.createImageData(RES, RES);
-    for (let y = 0; y < RES; y++) {
-      for (let x = 0; x < RES; x++) {
-        const u = x / (RES - 1), v = 1 - (y / (RES - 1));
-        const elev = sampleGrid(u, v);
-        const val = Math.floor(((elev - minE) / range) * 255);
-        const idx = (y * RES + x) * 4;
-        dData.data[idx] = val; dData.data[idx+1] = val; dData.data[idx+2] = val; dData.data[idx+3] = 255;
-      }
-    }
-    dCtx.putImageData(dData, 0, 0);
+    loadMapAndGenerateTextures();
 
-    const cCanvas = document.createElement('canvas'); cCanvas.width = RES; cCanvas.height = RES;
-    const cCtx = cCanvas.getContext('2d');
-    cCtx.fillStyle = '#2d2d35'; cCtx.fillRect(0, 0, RES, RES);
-    
-    const gridWidthM = haversine([minLon, minLat], [maxLon, minLat]);
-    const metersToPixels = RES / gridWidthM;
-    const roadWidthPixels = 8 * metersToPixels;
-    const lineWidthPixels = 0.1 * metersToPixels;
-
-    const project = (c) => ({
-      x: ((c[0] - minLon) / (maxLon - minLon)) * RES,
-      y: (1 - ((c[1] - minLat) / (maxLat - minLat))) * RES
-    });
-
-    // ─── Carve road into displacement map (flatten lateral slope) ───
-    dCtx.lineCap = 'round'; dCtx.lineJoin = 'round';
-    dCtx.lineWidth = roadWidthPixels;
-    for (let i = 0; i < road.coordinates.length - 1; i++) {
-      const p1 = project(road.coordinates[i]), p2 = project(road.coordinates[i+1]);
-      const h1 = sampleGrid((road.coordinates[i][0] - minLon) / (maxLon - minLon), (road.coordinates[i][1] - minLat) / (maxLat - minLat));
-      const h2 = sampleGrid((road.coordinates[i+1][0] - minLon) / (maxLon - minLon), (road.coordinates[i+1][1] - minLat) / (maxLat - minLat));
-      const v1 = Math.floor(((h1 - minE) / range) * 255), v2 = Math.floor(((h2 - minE) / range) * 255);
-      const grad = dCtx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
-      grad.addColorStop(0, `rgb(${v1},${v1},${v1})`); grad.addColorStop(1, `rgb(${v2},${v2},${v2})`);
-      dCtx.strokeStyle = grad; dCtx.beginPath(); dCtx.moveTo(p1.x, p1.y); dCtx.lineTo(p2.x, p2.y); dCtx.stroke();
-    }
-
-    // ─── Paint road color ───
-    cCtx.strokeStyle = '#1a1a1a'; cCtx.lineWidth = roadWidthPixels; 
-    cCtx.lineCap = 'round'; cCtx.lineJoin = 'round';
-    cCtx.beginPath(); road.coordinates.forEach((c, idx) => {
-      const p = project(c); if (idx === 0) cCtx.moveTo(p.x, p.y); else cCtx.lineTo(p.x, p.y);
-    });
-    cCtx.stroke();
-
-    // Yellow Line
-    cCtx.strokeStyle = '#facc15'; cCtx.lineWidth = Math.max(2, lineWidthPixels);
-    cCtx.setLineDash([]); cCtx.beginPath();
-    road.coordinates.forEach((c, idx) => {
-      const p = project(c); if (idx === 0) cCtx.moveTo(p.x, p.y); else cCtx.lineTo(p.x, p.y);
-    });
-    cCtx.stroke();
-
-    const roadTex = new THREE.CanvasTexture(cCanvas); roadTex.anisotropy = 16;
-    const dispTex = new THREE.CanvasTexture(dCanvas); dispTex.anisotropy = 16;
-    return { roadTexture: roadTex, displacementMap: dispTex };
+    return () => {
+      active = false;
+    };
   }, [road, gridData]);
 
   useEffect(()=>{
@@ -322,12 +429,33 @@ const Terrain3D = ({ road, onClose }) => {
           <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white/50 hover:text-white"><X size={16}/></button>
         </div>
       </div>
-      {loading ? (<div className="w-full h-full flex flex-col items-center justify-center gap-4"><Loader2 className="w-8 h-8 text-touge-500 animate-spin"/><span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Processing Mesh...</span></div>) : (
+      {loading ? (<div className="w-full h-full flex flex-col items-center justify-center gap-4"><Loader2 className="w-8 h-8 text-touge-500 animate-spin"/><span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Processing Mesh & Tiles...</span></div>) : (
         <div className="w-full h-full">
           <Canvas shadows gl={{antialias:true}}>
             {!flyoverActive && <PerspectiveCamera makeDefault position={[80,80,80]} fov={45}/>}{flyoverActive  && <PerspectiveCamera makeDefault fov={75} near={0.1} far={1000}/>}{!flyoverActive && <OrbitControls enableDamping dampingFactor={0.05} maxPolarAngle={Math.PI/2.1} minDistance={10} maxDistance={500}/>}{flyoverActive && roadPoints && <FlyoverCamera roadPoints={roadPoints} progress={flyoverProgress}/>}
-            <Stars radius={300} depth={60} count={10000} factor={7} saturation={0} fade speed={1}/><color attach="background" args={['#020205']}/><ambientLight intensity={0.5}/><pointLight position={[100,150,100]} intensity={2} castShadow/><spotLight position={[-100,100,-100]} intensity={1}/>
-            <TerrainMesh gridData={gridData} heightScale={heightScale} displacementMap={textures.displacementMap} roadTexture={textures.roadTexture} />
+            <Stars radius={300} depth={60} count={10000} factor={7} saturation={0} fade speed={1}/>
+            <color attach="background" args={['#030308']}/>
+            <ambientLight intensity={0.2} color="#0a0f1d"/>
+            <directionalLight
+              position={[120, 100, 80]}
+              intensity={3.5}
+              color="#fff9e6"
+              castShadow
+              shadow-mapSize-width={2048}
+              shadow-mapSize-height={2048}
+              shadow-bias={-0.0005}
+              shadow-camera-far={400}
+              shadow-camera-left={-60}
+              shadow-camera-right={60}
+              shadow-camera-top={60}
+              shadow-camera-bottom={-60}
+            />
+            <directionalLight
+              position={[-120, 50, -100]}
+              intensity={1.2}
+              color="#7dd3fc"
+            />
+            <TerrainMesh gridData={gridData} heightScale={heightScale} roadTexture={textures.roadTexture} />
             <RoadLine roadCoords={road.coordinates} gridData={gridData} heightScale={heightScale} onPoints={setRoadPoints}/>
             <Environment preset="city"/>
             {!flyoverActive && <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}><Text position={[0,heightScale+20,0]} rotation={[0,Math.PI,0]} fontSize={5} color="#facc15" anchorX="center" anchorY="middle" maxWidth={100} textAlign="center">{road.name?.toUpperCase()||'UNNAMED TOUGE'}</Text></Float>}

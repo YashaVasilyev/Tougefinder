@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Map as MapIcon, List, Navigation, MapPin, Loader2, ChevronUp, ChevronDown, SlidersHorizontal, Info } from 'lucide-react';
+import { Search, Map as MapIcon, List, Navigation, MapPin, Loader2, ChevronUp, ChevronDown, SlidersHorizontal, Info, Compass, Trash2, Sparkles } from 'lucide-react';
 import MapboxMap from './components/LeafletMap';
 import RoadList from './components/RoadList';
 import RoadDetail from './components/RoadDetail';
@@ -29,6 +29,149 @@ function App() {
   const [showFilters, setShowFilters] = useState(false);
   const [show3D, setShow3D] = useState(false);
   const [selectedRoadElevation, setSelectedRoadElevation] = useState(null);
+  
+  // Route Planning States & Helpers
+  const [routeWaypoints, setRouteWaypoints] = useState([]);
+  const [routePlannerActive, setRoutePlannerActive] = useState(false);
+  const [stitchedRoute, setStitchedRoute] = useState(null);
+  const [stitchingLoading, setStitchingLoading] = useState(false);
+
+  const fetchOSRMRoute = async (coord1, coord2) => {
+    try {
+      const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coord1[0]},${coord1[1]};${coord2[0]},${coord2[1]}?overview=full&geometries=geojson`);
+      if (!response.ok) throw new Error("OSRM failed");
+      const data = await response.json();
+      if (data.routes && data.routes.length > 0) {
+        return data.routes[0].geometry.coordinates;
+      }
+    } catch (err) {
+      console.error("OSRM failed, falling back to direct line:", err);
+    }
+    return [coord1, coord2];
+  };
+
+  const exportToGPX = (route) => {
+    if (!route || !route.coordinates) return;
+    let gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Tougefinder" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>${route.name}</name>
+    <desc>Planned driving route via Tougefinder</desc>
+  </metadata>
+  <trk>
+    <name>${route.name}</name>
+    <trkseg>`;
+
+    route.coordinates.forEach(coord => {
+      gpxContent += `
+        <trkpt lat="${coord[1]}" lon="${coord[0]}" />`;
+    });
+
+    gpxContent += `
+      </trkseg>
+    </trk>
+</gpx>`;
+
+    const blob = new Blob([gpxContent], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${route.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}.gpx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  useEffect(() => {
+    if (routeWaypoints.length === 0) {
+      setStitchedRoute(null);
+      return;
+    }
+    if (routeWaypoints.length === 1) {
+      const road = routeWaypoints[0];
+      setStitchedRoute({
+        id: 'planned-route',
+        name: `Planned Route: ${road.name}`,
+        type: 'Planned Route',
+        coordinates: road.coordinates,
+        curvatureScore: road.curvatureScore,
+        flowScore: road.flowScore,
+        totalScore: road.totalScore,
+        lengthMiles: road.lengthMiles,
+        maxIntensity: road.maxIntensity,
+        lineString: road.lineString
+      });
+      return;
+    }
+
+    const stitch = async () => {
+      setStitchingLoading(true);
+      try {
+        let allCoordinates = [];
+        let totalLengthMiles = 0;
+        let avgCurvatureSum = 0;
+        let avgFlowSum = 0;
+        
+        for (let i = 0; i < routeWaypoints.length; i++) {
+          const currentRoad = routeWaypoints[i];
+          allCoordinates.push(...currentRoad.coordinates);
+          totalLengthMiles += parseFloat(currentRoad.lengthMiles || '0');
+          avgCurvatureSum += currentRoad.curvatureScore || 0;
+          avgFlowSum += currentRoad.flowScore || 0;
+
+          if (i < routeWaypoints.length - 1) {
+            const nextRoad = routeWaypoints[i + 1];
+            const startCoord = currentRoad.coordinates[currentRoad.coordinates.length - 1];
+            const endCoord = nextRoad.coordinates[0];
+            
+            const connectionCoords = await fetchOSRMRoute(startCoord, endCoord);
+            if (connectionCoords && connectionCoords.length > 0) {
+              allCoordinates.push(...connectionCoords);
+              const connLine = turf.lineString(connectionCoords);
+              const connLenMiles = turf.length(connLine, { units: 'kilometers' }) * 0.621371;
+              totalLengthMiles += connLenMiles;
+            }
+          }
+        }
+
+        const avgCurvature = Math.round(avgCurvatureSum / routeWaypoints.length);
+        const avgFlow = Math.round(avgFlowSum / routeWaypoints.length);
+        const totalScore = Math.min(100, Math.round(avgCurvature + avgFlow));
+        const line = turf.lineString(allCoordinates);
+
+        setStitchedRoute({
+          id: 'planned-route',
+          name: `Custom Route (${routeWaypoints.length} Segments)`,
+          type: 'Planned Route',
+          coordinates: allCoordinates,
+          curvatureScore: avgCurvature,
+          flowScore: avgFlow,
+          totalScore,
+          lengthMiles: totalLengthMiles.toFixed(2),
+          maxIntensity: Math.max(...routeWaypoints.map(w => w.maxIntensity || 0)),
+          lineString: line
+        });
+      } catch (err) {
+        console.error("Stitching failed:", err);
+      } finally {
+        setStitchingLoading(false);
+      }
+    };
+
+    stitch();
+  }, [routeWaypoints]);
+
+  const handleAddToRoute = (road) => {
+    setRouteWaypoints(prev => {
+      if (prev.some(r => r.id === road.id)) return prev;
+      return [...prev, road];
+    });
+  };
+
+  const handleRemoveFromRoute = (road) => {
+    setRouteWaypoints(prev => prev.filter(r => r.id !== road.id));
+  };
   
   // Custom thresholds
   const [minScore, setMinScore] = useState(30);
@@ -284,6 +427,8 @@ function App() {
             onSelectRoad={handleSelectRoad}
             center={location}
             generatedTurns={generatedTurns}
+            plannedRoute={stitchedRoute}
+            plannedRouteWaypoints={routeWaypoints}
           />
         </div>
 
@@ -306,96 +451,220 @@ function App() {
                     {roads.length}
                   </span>
                 </h2>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
+                  <button 
+                    onClick={() => setRoutePlannerActive(!routePlannerActive)}
+                    className={cn(
+                      "p-2 rounded-lg transition-all relative flex items-center justify-center",
+                      routePlannerActive ? "bg-purple-600 text-white" : "text-zinc-500 hover:text-white"
+                    )}
+                    title="Route Planner"
+                  >
+                    <Compass className="w-5 h-5 animate-pulse-soft" />
+                    {routeWaypoints.length > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">
+                        {routeWaypoints.length}
+                      </span>
+                    )}
+                  </button>
                   <button 
                     onClick={() => setShowFilters(!showFilters)}
                     className={cn(
                       "p-2 rounded-lg transition-all",
                       showFilters ? "bg-touge-600 text-white" : "text-zinc-500 hover:text-white"
                     )}
+                    title="Filters"
                   >
                     <SlidersHorizontal className="w-5 h-5" />
                   </button>
-                  <label className="text-zinc-500 hover:text-white transition-colors cursor-pointer p-2">
+                  <label className="text-zinc-500 hover:text-white transition-colors cursor-pointer p-2" title="Upload JSON Route">
                     <input type="file" className="hidden" accept=".json" onChange={handleFileUpload} />
                     <Navigation className="w-5 h-5 rotate-90" />
                   </label>
                 </div>
               </div>
 
-              {showFilters && (
-                <div className="mb-6 bg-zinc-900/50 rounded-3xl border border-white/5 p-6 space-y-6">
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <label className="text-xs font-bold uppercase text-zinc-500">Search Radius</label>
-                      <span className="text-xs font-bold">{radius} miles</span>
+              {routePlannerActive ? (
+                <div className="space-y-6">
+                  <div className="p-4 bg-purple-950/20 border border-purple-500/20 rounded-2xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Compass className="w-4 h-4 text-purple-400" />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-purple-300">Touge Route Builder</h3>
+                      </div>
+                      {routeWaypoints.length > 0 && (
+                        <button 
+                          onClick={() => setRouteWaypoints([])}
+                          className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-1 font-semibold"
+                        >
+                          <Trash2 size={11} />
+                          Clear All
+                        </button>
+                      )}
                     </div>
-                    <input 
-                      type="range" min="5" max="50" step="5" value={radius} 
-                      onChange={(e) => setRadius(parseInt(e.target.value))}
-                      className="w-full accent-touge-500"
-                    />
+                    <p className="text-[10px] text-zinc-400 leading-relaxed">
+                      Chain multiple mountain passes together to construct a continuous planned drive. Click <b className="text-purple-300">+ Route</b> on any road's card to add it to your custom route sequence!
+                    </p>
                   </div>
 
+                  {/* Waypoint List */}
                   <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <label className="text-xs font-bold uppercase text-zinc-500">Min Touge Score</label>
-                      <span className="text-xs font-bold">{minScore}+</span>
-                    </div>
-                    <input 
-                      type="range" min="30" max="80" step="5" value={minScore} 
-                      onChange={(e) => setMinScore(parseInt(e.target.value))}
-                      className="w-full accent-touge-500"
-                    />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Route Waypoints</h4>
+                    {routeWaypoints.length === 0 ? (
+                      <div className="text-center py-8 border border-dashed border-white/5 rounded-2xl text-zinc-500 text-xs">
+                        No segments selected yet. Click a road on the map and add it to your custom driving route.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {routeWaypoints.map((waypoint, idx) => (
+                          <div 
+                            key={`wp-${waypoint.id}-${idx}`}
+                            className="group p-3 bg-zinc-900/60 hover:bg-zinc-900 border border-white/5 hover:border-white/10 rounded-xl flex items-center justify-between transition-all"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-500/30 w-5 h-5 rounded-full flex items-center justify-center font-mono">
+                                {idx + 1}
+                              </span>
+                              <div>
+                                <h5 className="text-xs font-bold text-zinc-100 group-hover:text-purple-400 transition-colors">{waypoint.name}</h5>
+                                <p className="text-[10px] text-zinc-500">{waypoint.lengthMiles} miles • Score {waypoint.totalScore}</p>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => handleRemoveFromRoute(waypoint)}
+                              className="text-zinc-600 hover:text-red-400 p-1.5 transition-colors"
+                              title="Remove from Route"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <label className="text-xs font-bold uppercase text-zinc-500">Min Road Length</label>
-                      <span className="text-xs font-bold">{minLength} mi</span>
-                    </div>
-                    <input 
-                      type="range" min="0.25" max="5" step="0.25" value={minLength} 
-                      onChange={(e) => setMinLength(parseFloat(e.target.value))}
-                      className="w-full accent-touge-500"
-                    />
-                  </div>
+                  {/* Stitched Route Summary Details */}
+                  {stitchedRoute && (
+                    <div className="p-5 bg-zinc-900/50 rounded-2xl border border-white/5 space-y-4">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">Joint Route Telemetry</h4>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-3 bg-zinc-950/40 rounded-xl border border-white/5">
+                          <span className="text-[8px] font-bold uppercase text-zinc-500 block">Total Distance</span>
+                          <span className="text-xs font-mono font-bold text-white">{stitchedRoute.lengthMiles} miles</span>
+                        </div>
+                        <div className="p-3 bg-zinc-950/40 rounded-xl border border-white/5">
+                          <span className="text-[8px] font-bold uppercase text-zinc-500 block">Route Rating</span>
+                          <span className="text-xs font-mono font-bold text-purple-400">{stitchedRoute.totalScore} / 100</span>
+                        </div>
+                      </div>
 
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <label className="text-xs font-bold uppercase text-zinc-500">Max Res. Density</label>
-                      <span className="text-xs font-bold">{maxHouseDensity}</span>
+                      {/* Connection Loader Status */}
+                      {stitchingLoading ? (
+                        <div className="flex items-center justify-center gap-2 py-2 text-zinc-500 text-xs font-mono">
+                          <Loader2 size={12} className="animate-spin" />
+                          Calculating Scenic Connections...
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <button 
+                            onClick={() => {
+                              setSelectedRoad(stitchedRoute);
+                              setShow3D(true);
+                            }}
+                            className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2"
+                          >
+                            <Sparkles size={12} />
+                            Flyover Planned Route (3D)
+                          </button>
+                          <button 
+                            onClick={() => exportToGPX(stitchedRoute)}
+                            className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                          >
+                            📥 Export Route (GPX)
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <input 
-                      type="range" min="1" max="50" step="1" value={maxHouseDensity} 
-                      onChange={(e) => setMaxHouseDensity(parseInt(e.target.value))}
-                      className="w-full accent-touge-500"
-                    />
-                  </div>
-                  
-                  <button 
-                    onClick={() => location && searchNear(location.lat, location.lon)}
-                    className="w-full py-3 bg-touge-600 hover:bg-touge-500 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-lg shadow-touge-900/20"
-                  >
-                    Apply & Re-scan
-                  </button>
+                  )}
                 </div>
+              ) : (
+                <>
+                  {showFilters && (
+                    <div className="mb-6 bg-zinc-900/50 rounded-3xl border border-white/5 p-6 space-y-6">
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <label className="text-xs font-bold uppercase text-zinc-500">Search Radius</label>
+                          <span className="text-xs font-bold">{radius} miles</span>
+                        </div>
+                        <input 
+                          type="range" min="5" max="50" step="5" value={radius} 
+                          onChange={(e) => setRadius(parseInt(e.target.value))}
+                          className="w-full accent-touge-500"
+                        />
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <label className="text-xs font-bold uppercase text-zinc-500">Min Touge Score</label>
+                          <span className="text-xs font-bold">{minScore}+</span>
+                        </div>
+                        <input 
+                          type="range" min="30" max="80" step="5" value={minScore} 
+                          onChange={(e) => setMinScore(parseInt(e.target.value))}
+                          className="w-full accent-touge-500"
+                        />
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <label className="text-xs font-bold uppercase text-zinc-500">Min Road Length</label>
+                          <span className="text-xs font-bold">{minLength} mi</span>
+                        </div>
+                        <input 
+                          type="range" min="0.25" max="5" step="0.25" value={minLength} 
+                          onChange={(e) => setMinLength(parseFloat(e.target.value))}
+                          className="w-full accent-touge-500"
+                        />
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <label className="text-xs font-bold uppercase text-zinc-500">Max Res. Density</label>
+                          <span className="text-xs font-bold">{maxHouseDensity}</span>
+                        </div>
+                        <input 
+                          type="range" min="1" max="50" step="1" value={maxHouseDensity} 
+                          onChange={(e) => setMaxHouseDensity(parseInt(e.target.value))}
+                          className="w-full accent-touge-500"
+                        />
+                      </div>
+                      
+                      <button 
+                        onClick={() => location && searchNear(location.lat, location.lon)}
+                        className="w-full py-3 bg-touge-600 hover:bg-touge-500 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-lg shadow-touge-900/20"
+                      >
+                        Apply & Re-scan
+                      </button>
+                    </div>
+                  )}
+
+                  <LocationSearch onSearch={handleManualSearch} loading={loading} />
+
+                  {error && (
+                    <div className="p-4 bg-red-900/20 border border-red-500/20 rounded-2xl text-red-400 text-sm mb-6">
+                      {error}
+                    </div>
+                  )}
+
+                  <RoadList 
+                    roads={roads} 
+                    loading={loading} 
+                    onSelectRoad={handleSelectRoad}
+                    selectedRoad={selectedRoad}
+                  />
+                </>
               )}
-
-              <LocationSearch onSearch={handleManualSearch} loading={loading} />
-
-              {error && (
-                <div className="p-4 bg-red-900/20 border border-red-500/20 rounded-2xl text-red-400 text-sm mb-6">
-                  {error}
-                </div>
-              )}
-
-              <RoadList 
-                roads={roads} 
-                loading={loading} 
-                onSelectRoad={handleSelectRoad}
-                selectedRoad={selectedRoad}
-              />
             </div>
           </div>
         )}
@@ -414,6 +683,9 @@ function App() {
           onNotesGenerated={setGeneratedTurns}
           onElevationLoaded={(data) => setSelectedRoadElevation(data.profile)}
           onShow3D={() => setShow3D(true)}
+          onAddToRoute={handleAddToRoute}
+          onRemoveFromRoute={handleRemoveFromRoute}
+          isInRoute={routeWaypoints.some(r => r.id === selectedRoad.id)}
         />
       )}
 

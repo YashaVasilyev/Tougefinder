@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, ExternalLink, TrendingUp, ArrowUpRight, Clock, Ruler, Clipboard, Check, ArrowRightLeft, Box } from 'lucide-react';
+import { X, ExternalLink, TrendingUp, ArrowUpRight, Clock, Ruler, Clipboard, Check, ArrowRightLeft, Box, Compass } from 'lucide-react';
 import { fetchElevationForRoad } from '../services/elevation';
 import { generatePacenotes, getCardinalDirection } from '../services/pacenotes';
 import { clsx } from 'clsx';
@@ -9,7 +9,7 @@ function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoaded }) => {
+const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoaded, onAddToRoute, onRemoveFromRoute, isInRoute }) => {
   const [elevationData, setElevationData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isReversed, setIsReversed] = useState(false);
@@ -182,11 +182,26 @@ const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoad
             </button>
             <button 
               onClick={onShow3D}
-              className="px-4 btn-secondary flex items-center justify-center gap-2 text-xs py-3 bg-touge-500/10 border-touge-500/30 text-touge-400 hover:bg-touge-500 hover:text-white"
+              className="px-3 btn-secondary flex items-center justify-center gap-2 text-xs py-3 bg-touge-500/10 border-touge-500/30 text-touge-400 hover:bg-touge-500 hover:text-white"
             >
               <Box size={14} />
               3D View
             </button>
+            {onAddToRoute && (
+              <button 
+                onClick={() => isInRoute ? onRemoveFromRoute(road) : onAddToRoute(road)}
+                className={cn(
+                  "px-3 btn-secondary flex items-center justify-center gap-2 text-xs py-3 transition-all",
+                  isInRoute 
+                    ? "bg-purple-600/25 border-purple-500/40 text-purple-300 hover:bg-purple-600 hover:text-white" 
+                    : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                )}
+                title={isInRoute ? "Remove from Route" : "Add to Planned Route"}
+              >
+                <Compass size={14} />
+                {isInRoute ? "Saved" : "+ Route"}
+              </button>
+            )}
           </div>
         </div>
       </div>

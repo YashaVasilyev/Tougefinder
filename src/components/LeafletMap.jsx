@@ -45,7 +45,7 @@ const ChangeView = ({ center, zoom, bounds }) => {
   return null;
 };
 
-const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, center, generatedTurns = [] }) => {
+const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, center, generatedTurns = [], plannedRoute, plannedRouteWaypoints }) => {
   const [zoom, setZoom] = useState(13);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -120,6 +120,30 @@ const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, cen
               click: (e) => onSelectRoad(road, e.originalEvent.shiftKey)
             }}
           />
+        ))}
+
+        {plannedRoute && plannedRoute.coordinates && (
+          <Polyline
+            positions={plannedRoute.coordinates.map(c => [c[1], c[0]])}
+            pathOptions={{
+              color: '#c084fc', // Light purple
+              weight: 6,
+              opacity: 0.95,
+              dashArray: '10, 10', // Dashed line representing planned route
+              lineJoin: 'round'
+            }}
+          />
+        )}
+
+        {plannedRouteWaypoints && plannedRouteWaypoints.map((waypoint, idx) => (
+          <Marker 
+            key={`waypoint-${waypoint.id}-${idx}`} 
+            position={[waypoint.coordinates[0][1], waypoint.coordinates[0][0]]}
+          >
+            <Tooltip permanent direction="top" className="bg-purple-950/90 text-purple-200 border border-purple-500/30 font-bold px-2 py-0.5 text-[8px] uppercase rounded">
+              #{idx + 1} {waypoint.name}
+            </Tooltip>
+          </Marker>
         ))}
 
         {selectedRoad && selectedRoad.coordinates && selectedRoad.coordinates.length > 0 && (

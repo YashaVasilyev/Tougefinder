@@ -105,7 +105,7 @@ const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoad
           <div className="bg-zinc-900/50 rounded-2xl p-4 border border-white/5 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Pacenotes</h3>
-              <button 
+              <button
                 onClick={() => setIsReversed(!isReversed)}
                 className="flex items-center gap-1.5 text-[10px] font-bold text-touge-400 uppercase bg-touge-400/10 px-2 py-1 rounded-lg hover:bg-touge-400/20 transition-colors"
               >
@@ -115,7 +115,7 @@ const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoad
             </div>
 
             <div className="flex bg-black/30 p-1 rounded-xl border border-white/5">
-              <button 
+              <button
                 onClick={() => setNoteFormat('rally')}
                 className={cn(
                   "flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all",
@@ -124,7 +124,7 @@ const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoad
               >
                 Rally (L3)
               </button>
-              <button 
+              <button
                 onClick={() => setNoteFormat('descriptive')}
                 className={cn(
                   "flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all",
@@ -137,9 +137,9 @@ const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoad
 
             <button
               onClick={() => {
-                const { text, turns } = generatePacenotes(road.coordinates, { 
-                  reverse: isReversed, 
-                  format: noteFormat, 
+                const { text, turns } = generatePacenotes(road.coordinates, {
+                  reverse: isReversed,
+                  format: noteFormat,
                   elevationProfile: elevationData?.profile,
                   returnObject: true
                 });
@@ -165,22 +165,22 @@ const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoad
               )}
             </button>
             <p className="text-[10px] text-zinc-500 text-center leading-relaxed italic">
-              {noteFormat === 'rally' 
-                ? '"1 is tight, 6 is slight. Distances in meters."' 
+              {noteFormat === 'rally'
+                ? '"1 is tight, 6 is slight. Distances in meters."'
                 : '"Real-world terms for easier reading on the fly."'}
             </p>
           </div>
 
           {/* Navigate Button */}
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={handleOpenMaps}
               className="flex-1 btn-secondary flex items-center justify-center gap-2 text-xs py-3"
             >
               <ExternalLink size={14} />
               Open in Maps
             </button>
-            <button 
+            <button
               onClick={onShow3D}
               className="px-3 btn-secondary flex items-center justify-center gap-2 text-xs py-3 bg-touge-500/10 border-touge-500/30 text-touge-400 hover:bg-touge-500 hover:text-white"
             >
@@ -188,12 +188,12 @@ const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoad
               3D View
             </button>
             {onAddToRoute && (
-              <button 
+              <button
                 onClick={() => isInRoute ? onRemoveFromRoute(road) : onAddToRoute(road)}
                 className={cn(
                   "px-3 btn-secondary flex items-center justify-center gap-2 text-xs py-3 transition-all",
-                  isInRoute 
-                    ? "bg-purple-600/25 border-purple-500/40 text-purple-300 hover:bg-purple-600 hover:text-white" 
+                  isInRoute
+                    ? "bg-purple-600/25 border-purple-500/40 text-purple-300 hover:bg-purple-600 hover:text-white"
                     : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
                 )}
                 title={isInRoute ? "Remove from Route" : "Add to Planned Route"}

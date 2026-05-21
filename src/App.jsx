@@ -294,24 +294,8 @@ function App() {
   };
 
   useEffect(() => {
-    if (routeWaypoints.length === 0) {
+    if (routeWaypoints.length === 0 && !(routeStartPoint && routeEndPoint)) {
       setStitchedRoute(null);
-      return;
-    }
-    if (routeWaypoints.length === 1) {
-      const road = routeWaypoints[0];
-      setStitchedRoute({
-        id: 'planned-route',
-        name: `Planned Route: ${road.name}`,
-        type: 'Planned Route',
-        coordinates: road.coordinates,
-        curvatureScore: road.curvatureScore,
-        flowScore: road.flowScore,
-        totalScore: road.totalScore,
-        lengthMiles: road.lengthMiles,
-        maxIntensity: road.maxIntensity,
-        lineString: road.lineString
-      });
       return;
     }
 
@@ -323,11 +307,37 @@ function App() {
         let avgCurvatureSum = 0;
         let avgFlowSum = 0;
 
-        // If corridor start/end points exist, route FROM start point TO first waypoint
-        if (routeStartPoint) {
-          const firstRoad = routeWaypoints[0];
-          const startCoord = [routeStartPoint.lon, routeStartPoint.lat];
-          const firstEntry = firstRoad.coordinates[0];
+        const startCoord = routeStartPoint ? [routeStartPoint.lon, routeStartPoint.lat] : null;
+        const endCoord = routeEndPoint ? [routeEndPoint.lon, routeEndPoint.lat] : null;
+
+        // If no waypoints but S and E exist, show direct OSRM route
+        if (routeWaypoints.length === 0 && startCoord && endCoord) {
+          const directCoords = await fetchOSRMRoute(startCoord, endCoord);
+          if (directCoords && directCoords.length > 0) {
+            allCoordinates = [[...startCoord], ...directCoords, [...endCoord]];
+          } else {
+            allCoordinates = [[...startCoord], [...endCoord]];
+          }
+          const line = turf.lineString(allCoordinates);
+          totalLengthMiles = turf.length(line, { units: 'kilometers' }) * 0.621371;
+          setStitchedRoute({
+            id: 'planned-route',
+            name: 'Direct Route (no passes)',
+            type: 'Planned Route',
+            coordinates: allCoordinates,
+            curvatureScore: 0, flowScore: 0, totalScore: 0,
+            lengthMiles: totalLengthMiles.toFixed(2),
+            maxIntensity: 0,
+            lineString: line
+          });
+          setStitchingLoading(false);
+          return;
+        }
+
+        // Always pin the exact Start coordinate as the very first point
+        if (startCoord) {
+          allCoordinates.push([...startCoord]);
+          const firstEntry = routeWaypoints[0].coordinates[0];
           const leadInCoords = await fetchOSRMRoute(startCoord, firstEntry);
           if (leadInCoords && leadInCoords.length > 0) {
             allCoordinates.push(...leadInCoords);
@@ -345,30 +355,28 @@ function App() {
 
           if (i < routeWaypoints.length - 1) {
             const nextRoad = routeWaypoints[i + 1];
-            const startCoord = currentRoad.coordinates[currentRoad.coordinates.length - 1];
-            const endCoord = nextRoad.coordinates[0];
+            const exitCoord = currentRoad.coordinates[currentRoad.coordinates.length - 1];
+            const entryCoord = nextRoad.coordinates[0];
             
-            const connectionCoords = await fetchOSRMRoute(startCoord, endCoord);
+            const connectionCoords = await fetchOSRMRoute(exitCoord, entryCoord);
             if (connectionCoords && connectionCoords.length > 0) {
               allCoordinates.push(...connectionCoords);
               const connLine = turf.lineString(connectionCoords);
-              const connLenMiles = turf.length(connLine, { units: 'kilometers' }) * 0.621371;
-              totalLengthMiles += connLenMiles;
+              totalLengthMiles += turf.length(connLine, { units: 'kilometers' }) * 0.621371;
             }
           }
         }
 
-        // If corridor end point exists, route FROM last waypoint TO end point
-        if (routeEndPoint) {
-          const lastRoad = routeWaypoints[routeWaypoints.length - 1];
-          const lastExit = lastRoad.coordinates[lastRoad.coordinates.length - 1];
-          const endCoord = [routeEndPoint.lon, routeEndPoint.lat];
+        // Always pin the exact End coordinate as the very last point
+        if (endCoord) {
+          const lastExit = routeWaypoints[routeWaypoints.length - 1].coordinates[routeWaypoints[routeWaypoints.length - 1].coordinates.length - 1];
           const leadOutCoords = await fetchOSRMRoute(lastExit, endCoord);
           if (leadOutCoords && leadOutCoords.length > 0) {
             allCoordinates.push(...leadOutCoords);
             const connLine = turf.lineString(leadOutCoords);
             totalLengthMiles += turf.length(connLine, { units: 'kilometers' }) * 0.621371;
           }
+          allCoordinates.push([...endCoord]);
         }
 
         const avgCurvature = Math.round(avgCurvatureSum / routeWaypoints.length);

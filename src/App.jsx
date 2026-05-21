@@ -172,8 +172,14 @@ function App() {
       
       let bestPath = [];
       let maxCurvature = -1;
+      let iterations = 0;
+      const MAX_ITERATIONS = 4000;
       
       const dfs = (currCoords, currDist, currCurv, visitedIds, currentPath) => {
+        iterations++;
+        if (iterations > MAX_ITERATIONS) return;
+        if (currentPath.length >= 6) return; // Limit route to 6 segments max to prevent stack explosion
+
         const distToEnd = dist(currCoords, endCoords);
         const finalDist = currDist + distToEnd;
         
@@ -184,24 +190,39 @@ function App() {
           }
         }
         
-        for (const road of candidates) {
-          if (visitedIds.has(road.id)) continue;
+        // Dynamic Proximity Sorting & Pruning: sort candidates by connection distance
+        const sortedCandidates = candidates
+          .filter(r => !visitedIds.has(r.id))
+          .map(road => {
+            const A = road.coordinates[0];
+            const B = road.coordinates[road.coordinates.length - 1];
+            const distToA = dist(currCoords, A);
+            const distToB = dist(currCoords, B);
+            return {
+              road,
+              A,
+              B,
+              distToA,
+              distToB,
+              minDist: Math.min(distToA, distToB)
+            };
+          })
+          .filter(item => item.minDist <= 60) // Keep connections localized
+          .sort((a, b) => a.minDist - b.minDist)
+          .slice(0, 8); // Branch factor limit: check only top 8 closest touges to avoid exponential fan-out
           
-          const A = road.coordinates[0];
-          const B = road.coordinates[road.coordinates.length - 1];
+        for (const item of sortedCandidates) {
+          const road = item.road;
           const roadLenKm = parseFloat(road.lengthMiles || '0') * 1.60934;
           const roadCurvVal = (road.curvatureScore || 0) * parseFloat(road.lengthMiles || '0');
 
           // Entry A, Exit B
-          const distToA = dist(currCoords, A);
-          const distFromBToEnd = dist(B, endCoords);
-          const totalEstDistA = currDist + distToA + roadLenKm + distFromBToEnd;
-          
+          const totalEstDistA = currDist + item.distToA + roadLenKm + dist(item.B, endCoords);
           if (totalEstDistA <= maxAllowedDistKm) {
             visitedIds.add(road.id);
             dfs(
-              B,
-              currDist + distToA + roadLenKm,
+              item.B,
+              currDist + item.distToA + roadLenKm,
               currCurv + roadCurvVal,
               visitedIds,
               [...currentPath, road]
@@ -210,10 +231,7 @@ function App() {
           }
           
           // Entry B, Exit A
-          const distToB = dist(currCoords, B);
-          const distFromAToEnd = dist(A, endCoords);
-          const totalEstDistB = currDist + distToB + roadLenKm + distFromAToEnd;
-          
+          const totalEstDistB = currDist + item.distToB + roadLenKm + dist(item.A, endCoords);
           if (totalEstDistB <= maxAllowedDistKm) {
             visitedIds.add(road.id);
             const reversedRoad = {
@@ -221,8 +239,8 @@ function App() {
               coordinates: [...road.coordinates].reverse()
             };
             dfs(
-              A,
-              currDist + distToB + roadLenKm,
+              item.A,
+              currDist + item.distToB + roadLenKm,
               currCurv + roadCurvVal,
               visitedIds,
               [...currentPath, reversedRoad]

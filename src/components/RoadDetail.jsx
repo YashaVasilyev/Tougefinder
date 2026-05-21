@@ -77,12 +77,56 @@ const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoad
               )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/10 flex-shrink-0"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3 flex-shrink-0 font-sans">
+            {/* Real Speed Limit Sign */}
+            {(() => {
+              const rawSpeed = road.tags?.maxspeed;
+              const isVariable = road.hasVariableSpeedLimit;
+              
+              if (!rawSpeed && !isVariable) return null;
+              
+              let displaySpeed = null;
+              if (rawSpeed) {
+                const isNumeric = /^\d+$/.test(rawSpeed.trim());
+                const isMph = /^\d+\s*mph$/i.test(rawSpeed.trim());
+                if (isNumeric) {
+                  const kmh = parseInt(rawSpeed.trim(), 10);
+                  displaySpeed = Math.round(kmh * 0.621371);
+                } else if (isMph) {
+                  displaySpeed = parseInt(rawSpeed.trim(), 10);
+                }
+              }
+
+              if (isVariable) {
+                return (
+                  <div className="w-[34px] h-[42px] bg-zinc-950 rounded-sm border-[2px] border-zinc-700 flex flex-col items-center justify-between py-1 px-[2px] shadow-lg select-none font-bold text-amber-500 ring-1 ring-white/5" title="Variable Speed Limit">
+                    <span className="text-[5px] font-black tracking-tighter uppercase leading-none text-zinc-500 scale-90 -mt-[1px]">SPEED</span>
+                    <span className="text-[5px] font-black tracking-tighter uppercase leading-none text-zinc-500 scale-90 -mt-[2px]">LIMIT</span>
+                    <span className="text-[10px] font-black leading-none tracking-wider text-amber-400 animate-pulse pb-[2px] font-mono">VAR</span>
+                  </div>
+                );
+              }
+
+              if (displaySpeed) {
+                return (
+                  <div className="w-[34px] h-[42px] bg-white rounded-sm border-[2px] border-slate-950 flex flex-col items-center justify-between py-1 px-[2px] shadow-lg select-none font-bold text-slate-900 border-black ring-1 ring-white/10" title={`Speed Limit: ${displaySpeed} MPH`}>
+                    <span className="text-[5px] font-black tracking-tighter uppercase leading-none text-slate-800 scale-90 -mt-[1px]">SPEED</span>
+                    <span className="text-[5px] font-black tracking-tighter uppercase leading-none text-slate-800 scale-90 -mt-[2px]">LIMIT</span>
+                    <span className="text-sm font-black leading-none tracking-tight text-black tabular-nums pb-[1px]">{displaySpeed}</span>
+                  </div>
+                );
+              }
+
+              return null;
+            })()}
+
+            <button
+              onClick={onClose}
+              className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/10 flex-shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable body */}

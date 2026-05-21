@@ -190,7 +190,9 @@ function App() {
           }
         }
         
-        // Dynamic Proximity Sorting & Pruning: sort candidates by connection distance
+        // Dynamic Proximity Sorting & Directional Pruning
+        const distCurrToEnd = dist(currCoords, endCoords);
+
         const sortedCandidates = candidates
           .filter(r => !visitedIds.has(r.id))
           .map(road => {
@@ -207,45 +209,64 @@ function App() {
               minDist: Math.min(distToA, distToB)
             };
           })
-          .filter(item => item.minDist <= 60) // Keep connections localized
+          .filter(item => {
+            if (item.minDist > 50) return false; // Keep connections localized
+
+            // Directional progress: exit node must get us closer to the destination than currCoords
+            const distBToEnd = dist(item.B, endCoords);
+            const distAToEnd = dist(item.A, endCoords);
+            const validAtoB = distBToEnd < distCurrToEnd && distAToEnd <= distCurrToEnd + 5;
+            const validBtoA = distAToEnd < distCurrToEnd && distBToEnd <= distCurrToEnd + 5;
+
+            return validAtoB || validBtoA;
+          })
           .sort((a, b) => a.minDist - b.minDist)
-          .slice(0, 8); // Branch factor limit: check only top 8 closest touges to avoid exponential fan-out
+          .slice(0, 8); // Branch factor limit: check only top 8 closest forward-moving touges
           
         for (const item of sortedCandidates) {
           const road = item.road;
           const roadLenKm = parseFloat(road.lengthMiles || '0') * 1.60934;
           const roadCurvVal = (road.curvatureScore || 0) * parseFloat(road.lengthMiles || '0');
 
+          const distBToEnd = dist(item.B, endCoords);
+          const distAToEnd = dist(item.A, endCoords);
+
           // Entry A, Exit B
-          const totalEstDistA = currDist + item.distToA + roadLenKm + dist(item.B, endCoords);
-          if (totalEstDistA <= maxAllowedDistKm) {
-            visitedIds.add(road.id);
-            dfs(
-              item.B,
-              currDist + item.distToA + roadLenKm,
-              currCurv + roadCurvVal,
-              visitedIds,
-              [...currentPath, road]
-            );
-            visitedIds.delete(road.id);
+          const validAtoB = distBToEnd < distCurrToEnd && distAToEnd <= distCurrToEnd + 5;
+          if (validAtoB) {
+            const totalEstDistA = currDist + item.distToA + roadLenKm + distBToEnd;
+            if (totalEstDistA <= maxAllowedDistKm) {
+              visitedIds.add(road.id);
+              dfs(
+                item.B,
+                currDist + item.distToA + roadLenKm,
+                currCurv + roadCurvVal,
+                visitedIds,
+                [...currentPath, road]
+              );
+              visitedIds.delete(road.id);
+            }
           }
           
           // Entry B, Exit A
-          const totalEstDistB = currDist + item.distToB + roadLenKm + dist(item.A, endCoords);
-          if (totalEstDistB <= maxAllowedDistKm) {
-            visitedIds.add(road.id);
-            const reversedRoad = {
-              ...road,
-              coordinates: [...road.coordinates].reverse()
-            };
-            dfs(
-              item.A,
-              currDist + item.distToB + roadLenKm,
-              currCurv + roadCurvVal,
-              visitedIds,
-              [...currentPath, reversedRoad]
-            );
-            visitedIds.delete(road.id);
+          const validBtoA = distAToEnd < distCurrToEnd && distBToEnd <= distCurrToEnd + 5;
+          if (validBtoA) {
+            const totalEstDistB = currDist + item.distToB + roadLenKm + distAToEnd;
+            if (totalEstDistB <= maxAllowedDistKm) {
+              visitedIds.add(road.id);
+              const reversedRoad = {
+                ...road,
+                coordinates: [...road.coordinates].reverse()
+              };
+              dfs(
+                item.A,
+                currDist + item.distToB + roadLenKm,
+                currCurv + roadCurvVal,
+                visitedIds,
+                [...currentPath, reversedRoad]
+              );
+              visitedIds.delete(road.id);
+            }
           }
         }
       };

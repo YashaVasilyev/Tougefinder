@@ -127,6 +127,126 @@ function App() {
     }
   };
 
+  // Tolerable distance surplus and routing solvers
+  const [distanceSurplus, setDistanceSurplus] = useState(50); // in percent, default 50%
+  const [autoRouteLoading, setAutoRouteLoading] = useState(false);
+
+  const fetchFastestRouteDistance = async (startPt, endPt) => {
+    try {
+      const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${startPt.lon},${startPt.lat};${endPt.lon},${endPt.lat}?overview=false`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.routes && data.routes.length > 0) {
+          return data.routes[0].distance / 1000; // in km
+        }
+      }
+    } catch (e) {
+      console.error("OSRM fastest route check failed, using direct distance proxy:", e);
+    }
+    const startPoint = turf.point([startPt.lon, startPt.lat]);
+    const endPoint = turf.point([endPt.lon, endPt.lat]);
+    return turf.distance(startPoint, endPoint, { units: 'kilometers' }) * 1.25;
+  };
+
+  const handleGenerateCurvatureRoute = async () => {
+    if (!routeStartPoint || !routeEndPoint) {
+      setError("Please set both Start and End points first.");
+      return;
+    }
+    
+    setAutoRouteLoading(true);
+    setError(null);
+    
+    try {
+      const baseDistKm = await fetchFastestRouteDistance(routeStartPoint, routeEndPoint);
+      const maxAllowedDistKm = baseDistKm * (1 + distanceSurplus / 100);
+      
+      const dist = (c1, c2) => {
+        return turf.distance(turf.point(c1), turf.point(c2), { units: 'kilometers' });
+      };
+
+      const startCoords = [routeStartPoint.lon, routeStartPoint.lat];
+      const endCoords = [routeEndPoint.lon, routeEndPoint.lat];
+      
+      const candidates = roads.filter(r => r.coordinates && r.coordinates.length > 1);
+      
+      let bestPath = [];
+      let maxCurvature = -1;
+      
+      const dfs = (currCoords, currDist, currCurv, visitedIds, currentPath) => {
+        const distToEnd = dist(currCoords, endCoords);
+        const finalDist = currDist + distToEnd;
+        
+        if (finalDist <= maxAllowedDistKm) {
+          if (currCurv > maxCurvature) {
+            maxCurvature = currCurv;
+            bestPath = [...currentPath];
+          }
+        }
+        
+        for (const road of candidates) {
+          if (visitedIds.has(road.id)) continue;
+          
+          const A = road.coordinates[0];
+          const B = road.coordinates[road.coordinates.length - 1];
+          const roadLenKm = parseFloat(road.lengthMiles || '0') * 1.60934;
+          const roadCurvVal = (road.curvatureScore || 0) * parseFloat(road.lengthMiles || '0');
+
+          // Entry A, Exit B
+          const distToA = dist(currCoords, A);
+          const distFromBToEnd = dist(B, endCoords);
+          const totalEstDistA = currDist + distToA + roadLenKm + distFromBToEnd;
+          
+          if (totalEstDistA <= maxAllowedDistKm) {
+            visitedIds.add(road.id);
+            dfs(
+              B,
+              currDist + distToA + roadLenKm,
+              currCurv + roadCurvVal,
+              visitedIds,
+              [...currentPath, road]
+            );
+            visitedIds.delete(road.id);
+          }
+          
+          // Entry B, Exit A
+          const distToB = dist(currCoords, B);
+          const distFromAToEnd = dist(A, endCoords);
+          const totalEstDistB = currDist + distToB + roadLenKm + distFromAToEnd;
+          
+          if (totalEstDistB <= maxAllowedDistKm) {
+            visitedIds.add(road.id);
+            const reversedRoad = {
+              ...road,
+              coordinates: [...road.coordinates].reverse()
+            };
+            dfs(
+              A,
+              currDist + distToB + roadLenKm,
+              currCurv + roadCurvVal,
+              visitedIds,
+              [...currentPath, reversedRoad]
+            );
+            visitedIds.delete(road.id);
+          }
+        }
+      };
+
+      dfs(startCoords, 0, 0, new Set(), []);
+
+      if (bestPath.length === 0) {
+        setError("No optimal winding routes found within the distance surplus budget. Try increasing distance surplus!");
+      } else {
+        setRouteWaypoints(bestPath);
+      }
+    } catch (err) {
+      console.error("Failed to generate optimal curvature route:", err);
+      setError("Winding routing engine failed.");
+    } finally {
+      setAutoRouteLoading(false);
+    }
+  };
+
   const fetchOSRMRoute = async (coord1, coord2) => {
     try {
       const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coord1[0]},${coord1[1]};${coord2[0]},${coord2[1]}?overview=full&geometries=geojson`);
@@ -690,6 +810,61 @@ function App() {
                       );
                     })()}
                   </div>
+
+                  {/* Curvature Optimization Routing Panel */}
+                  {routeStartPoint && routeEndPoint && (
+                    <div className="space-y-4 bg-purple-950/15 border border-purple-500/20 p-4 rounded-2xl">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-purple-400">
+                          <Sparkles className="w-4 h-4 text-purple-400" />
+                          <h4 className="text-xs font-bold uppercase tracking-wider">Curvature Optimizer</h4>
+                        </div>
+                        <span className="text-[9px] font-bold text-zinc-500 uppercase">Engine</span>
+                      </div>
+                      
+                      <p className="text-[10px] text-zinc-400 leading-normal">
+                        Automatically construct the absolute most winding route connecting your targets, detouring onto corridor mountain passes!
+                      </p>
+
+                      {/* Tolerable distance surplus slider */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center text-[10px] font-bold uppercase text-zinc-400">
+                          <span>Max Distance Surplus</span>
+                          <span className="text-purple-400">+{distanceSurplus}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="10"
+                          max="200"
+                          step="10"
+                          value={distanceSurplus}
+                          onChange={(e) => setDistanceSurplus(parseInt(e.target.value))}
+                          className="w-full accent-purple-500"
+                        />
+                        <p className="text-[9px] text-zinc-500 leading-normal italic">
+                          Allows the router to detour up to {(1 + distanceSurplus / 100).toFixed(1)}x of the direct distance to pack more twisty mountain passes.
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={handleGenerateCurvatureRoute}
+                        disabled={autoRouteLoading}
+                        className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-900/30"
+                      >
+                        {autoRouteLoading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Finding Twisty Path...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Compass className="w-4 h-4 animate-spin-slow" />
+                            <span>Generate Winding Route</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
 
                   {/* Waypoint List */}
                   <div className="space-y-3">

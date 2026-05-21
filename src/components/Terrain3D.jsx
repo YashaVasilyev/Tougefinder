@@ -87,11 +87,29 @@ const lon2tile = (lon, zoom) => (lon + 180) / 360 * Math.pow(2, zoom);
 const lat2tile = (lat, zoom) => (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom);
 
 // ─── Three.js components ──────────────────────────────────────────────────────
+const getPlaneDimensions = (gridData) => {
+  if (!gridData) return { w: 100, h: 100 };
+  const { minLat, maxLat, minLon, maxLon } = gridData;
+  const widthM = haversine([minLon, minLat], [maxLon, minLat]);
+  const heightM = haversine([minLon, minLat], [minLon, maxLat]);
+  const aspect = heightM > 0 ? (widthM / heightM) : 1;
+  let w = 100;
+  let h = 100;
+  if (aspect > 1) {
+    h = 100 / aspect;
+  } else {
+    w = 100 * aspect;
+  }
+  return { w, h };
+};
+
+// ─── Three.js components ──────────────────────────────────────────────────────
 const TerrainMesh = ({ gridData, heightScale, roadTexture }) => {
   const resolution = 256; 
   const geometry = useMemo(() => {
     if (!gridData) return null;
-    const geom = new THREE.PlaneGeometry(100, 100, resolution - 1, resolution - 1);
+    const { w, h } = getPlaneDimensions(gridData);
+    const geom = new THREE.PlaneGeometry(w, h, resolution - 1, resolution - 1);
     const { grid, minLat, maxLat, minLon, maxLon } = gridData;
     const flatGrid = grid.flat();
     const minE = Math.min(...flatGrid);
@@ -120,6 +138,9 @@ const TerrainMesh = ({ gridData, heightScale, roadTexture }) => {
 
   if (!geometry) return null;
 
+  const { w, h } = getPlaneDimensions(gridData);
+  const maxDim = Math.max(w, h);
+
   return (
     <mesh geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} receiveShadow castShadow>
       <meshStandardMaterial 
@@ -128,7 +149,7 @@ const TerrainMesh = ({ gridData, heightScale, roadTexture }) => {
         metalness={0.1} 
         flatShading={false} 
       />
-      <gridHelper args={[100, 20, '#2a2a35', '#1a1a22']} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.01]} />
+      <gridHelper args={[maxDim, 20, '#2a2a35', '#1a1a22']} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.01]} />
     </mesh>
   );
 };
@@ -140,12 +161,15 @@ const RoadLine = ({ roadCoords, gridData, heightScale, onPoints }) => {
   const range = maxE - minE || 100;
   const sample = useMemo(() => makeSampler(grid, minLat, maxLat, minLon, maxLon), [grid, minLat, maxLat, minLon, maxLon]);
   
-  const points = useMemo(() => roadCoords.map(c => {
-    const x = ((c[0] - minLon) / (maxLon - minLon)) * 100 - 50;
-    const z = ((c[1] - minLat) / (maxLat - minLat)) * 100 - 50;
-    const y = ((sample(c[1], c[0]) - minE) / range) * heightScale + 0.1;
-    return new THREE.Vector3(x, y, z);
-  }), [roadCoords, minLat, maxLat, minLon, maxLon, minE, range, heightScale, sample]);
+  const points = useMemo(() => {
+    const { w, h } = getPlaneDimensions(gridData);
+    return roadCoords.map(c => {
+      const x = ((c[0] - minLon) / (maxLon - minLon)) * w - (w / 2);
+      const z = ((c[1] - minLat) / (maxLat - minLat)) * h - (h / 2);
+      const y = ((sample(c[1], c[0]) - minE) / range) * heightScale + 0.1;
+      return new THREE.Vector3(x, y, z);
+    });
+  }, [roadCoords, gridData, minE, range, heightScale, sample]);
   
   useEffect(() => { if (onPoints) onPoints(points); }, [points, onPoints]);
   return null;

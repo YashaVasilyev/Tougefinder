@@ -167,116 +167,76 @@ function App() {
 
       const startCoords = [routeStartPoint.lon, routeStartPoint.lat];
       const endCoords = [routeEndPoint.lon, routeEndPoint.lat];
+      const seLine = turf.lineString([startCoords, endCoords]);
+      const seLen = turf.length(seLine, { units: 'kilometers' });
       
       const candidates = roads.filter(r => r.coordinates && r.coordinates.length > 1);
-      
-      let bestPath = [];
-      let maxCurvature = -1;
-      let iterations = 0;
-      const MAX_ITERATIONS = 4000;
-      
-      const dfs = (currCoords, currDist, currCurv, visitedIds, currentPath) => {
-        iterations++;
-        if (iterations > MAX_ITERATIONS) return;
-        if (currentPath.length >= 6) return; // Limit route to 6 segments max to prevent stack explosion
 
-        const distToEnd = dist(currCoords, endCoords);
-        const finalDist = currDist + distToEnd;
+      // For each candidate, compute its midpoint projection along S->E (0=start, 1=end)
+      // and orient it so entry is closer to S and exit is closer to E
+      const projected = candidates.map(road => {
+        const A = road.coordinates[0];
+        const B = road.coordinates[road.coordinates.length - 1];
+        const midCoord = road.coordinates[Math.floor(road.coordinates.length / 2)];
+        const midPt = turf.point(midCoord);
+        const snapped = turf.nearestPointOnLine(seLine, midPt, { units: 'kilometers' });
+        const progress = seLen > 0 ? snapped.properties.location / seLen : 0.5;
         
-        if (finalDist <= maxAllowedDistKm) {
-          if (currCurv > maxCurvature) {
-            maxCurvature = currCurv;
-            bestPath = [...currentPath];
+        const roadLenKm = parseFloat(road.lengthMiles || '0') * 1.60934;
+        const curvatureValue = (road.curvatureScore || 0) * parseFloat(road.lengthMiles || '0');
+        
+        // Orient so entry is closer to S, exit is closer to E
+        const distAtoS = dist(A, startCoords);
+        const distBtoS = dist(B, startCoords);
+        const oriented = distAtoS <= distBtoS 
+          ? road 
+          : { ...road, coordinates: [...road.coordinates].reverse() };
+        
+        return {
+          road: oriented,
+          progress,
+          roadLenKm,
+          curvatureValue,
+          entry: oriented.coordinates[0],
+          exit: oriented.coordinates[oriented.coordinates.length - 1]
+        };
+      })
+      .filter(p => p.progress > 0.02 && p.progress < 0.98) // exclude passes at the very edges
+      .sort((a, b) => b.curvatureValue - a.curvatureValue); // highest curvature first for greedy
+
+      // Estimate total chain distance: S -> wp1 -> wp2 -> ... -> E
+      const estimateChainDist = (selected) => {
+        if (selected.length === 0) return dist(startCoords, endCoords);
+        let total = dist(startCoords, selected[0].entry);
+        for (let i = 0; i < selected.length; i++) {
+          total += selected[i].roadLenKm;
+          if (i < selected.length - 1) {
+            total += dist(selected[i].exit, selected[i + 1].entry);
           }
         }
-        
-        // Dynamic Proximity Sorting & Directional Pruning
-        const distCurrToEnd = dist(currCoords, endCoords);
-
-        const sortedCandidates = candidates
-          .filter(r => !visitedIds.has(r.id))
-          .map(road => {
-            const A = road.coordinates[0];
-            const B = road.coordinates[road.coordinates.length - 1];
-            const distToA = dist(currCoords, A);
-            const distToB = dist(currCoords, B);
-            return {
-              road,
-              A,
-              B,
-              distToA,
-              distToB,
-              minDist: Math.min(distToA, distToB)
-            };
-          })
-          .filter(item => {
-            if (item.minDist > 50) return false; // Keep connections localized
-
-            // Directional progress: exit node must get us closer to the destination than currCoords
-            const distBToEnd = dist(item.B, endCoords);
-            const distAToEnd = dist(item.A, endCoords);
-            const validAtoB = distBToEnd < distCurrToEnd && distAToEnd <= distCurrToEnd + 5;
-            const validBtoA = distAToEnd < distCurrToEnd && distBToEnd <= distCurrToEnd + 5;
-
-            return validAtoB || validBtoA;
-          })
-          .sort((a, b) => a.minDist - b.minDist)
-          .slice(0, 8); // Branch factor limit: check only top 8 closest forward-moving touges
-          
-        for (const item of sortedCandidates) {
-          const road = item.road;
-          const roadLenKm = parseFloat(road.lengthMiles || '0') * 1.60934;
-          const roadCurvVal = (road.curvatureScore || 0) * parseFloat(road.lengthMiles || '0');
-
-          const distBToEnd = dist(item.B, endCoords);
-          const distAToEnd = dist(item.A, endCoords);
-
-          // Entry A, Exit B
-          const validAtoB = distBToEnd < distCurrToEnd && distAToEnd <= distCurrToEnd + 5;
-          if (validAtoB) {
-            const totalEstDistA = currDist + item.distToA + roadLenKm + distBToEnd;
-            if (totalEstDistA <= maxAllowedDistKm) {
-              visitedIds.add(road.id);
-              dfs(
-                item.B,
-                currDist + item.distToA + roadLenKm,
-                currCurv + roadCurvVal,
-                visitedIds,
-                [...currentPath, road]
-              );
-              visitedIds.delete(road.id);
-            }
-          }
-          
-          // Entry B, Exit A
-          const validBtoA = distAToEnd < distCurrToEnd && distBToEnd <= distCurrToEnd + 5;
-          if (validBtoA) {
-            const totalEstDistB = currDist + item.distToB + roadLenKm + distAToEnd;
-            if (totalEstDistB <= maxAllowedDistKm) {
-              visitedIds.add(road.id);
-              const reversedRoad = {
-                ...road,
-                coordinates: [...road.coordinates].reverse()
-              };
-              dfs(
-                item.A,
-                currDist + item.distToB + roadLenKm,
-                currCurv + roadCurvVal,
-                visitedIds,
-                [...currentPath, reversedRoad]
-              );
-              visitedIds.delete(road.id);
-            }
-          }
-        }
+        total += dist(selected[selected.length - 1].exit, endCoords);
+        return total;
       };
 
-      dfs(startCoords, 0, 0, new Set(), []);
+      // Greedy insertion: try adding each candidate (curvature-descending) into the
+      // position-sorted route, keeping the chain within budget
+      let selected = [];
+      
+      for (const candidate of projected) {
+        // Insert candidate into selected list maintaining position-sorted order
+        const trial = [...selected, candidate].sort((a, b) => a.progress - b.progress);
+        const trialDist = estimateChainDist(trial);
+        
+        if (trialDist <= maxAllowedDistKm) {
+          selected = trial;
+        }
+        if (selected.length >= 6) break; // cap at 6 segments
+      }
 
-      if (bestPath.length === 0) {
-        setError("No optimal winding routes found within the distance surplus budget. Try increasing distance surplus!");
+      if (selected.length === 0) {
+        setError("No winding routes found within your distance surplus budget. Try increasing the surplus slider!");
       } else {
-        setRouteWaypoints(bestPath);
+        setRouteWaypoints(selected.map(s => s.road));
       }
     } catch (err) {
       console.error("Failed to generate optimal curvature route:", err);
@@ -362,6 +322,19 @@ function App() {
         let totalLengthMiles = 0;
         let avgCurvatureSum = 0;
         let avgFlowSum = 0;
+
+        // If corridor start/end points exist, route FROM start point TO first waypoint
+        if (routeStartPoint) {
+          const firstRoad = routeWaypoints[0];
+          const startCoord = [routeStartPoint.lon, routeStartPoint.lat];
+          const firstEntry = firstRoad.coordinates[0];
+          const leadInCoords = await fetchOSRMRoute(startCoord, firstEntry);
+          if (leadInCoords && leadInCoords.length > 0) {
+            allCoordinates.push(...leadInCoords);
+            const connLine = turf.lineString(leadInCoords);
+            totalLengthMiles += turf.length(connLine, { units: 'kilometers' }) * 0.621371;
+          }
+        }
         
         for (let i = 0; i < routeWaypoints.length; i++) {
           const currentRoad = routeWaypoints[i];
@@ -382,6 +355,19 @@ function App() {
               const connLenMiles = turf.length(connLine, { units: 'kilometers' }) * 0.621371;
               totalLengthMiles += connLenMiles;
             }
+          }
+        }
+
+        // If corridor end point exists, route FROM last waypoint TO end point
+        if (routeEndPoint) {
+          const lastRoad = routeWaypoints[routeWaypoints.length - 1];
+          const lastExit = lastRoad.coordinates[lastRoad.coordinates.length - 1];
+          const endCoord = [routeEndPoint.lon, routeEndPoint.lat];
+          const leadOutCoords = await fetchOSRMRoute(lastExit, endCoord);
+          if (leadOutCoords && leadOutCoords.length > 0) {
+            allCoordinates.push(...leadOutCoords);
+            const connLine = turf.lineString(leadOutCoords);
+            totalLengthMiles += turf.length(connLine, { units: 'kilometers' }) * 0.621371;
           }
         }
 
@@ -410,7 +396,7 @@ function App() {
     };
 
     stitch();
-  }, [routeWaypoints]);
+  }, [routeWaypoints, routeStartPoint, routeEndPoint]);
 
   const handleAddToRoute = (road) => {
     setRouteWaypoints(prev => {

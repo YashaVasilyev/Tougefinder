@@ -77,8 +77,13 @@ const LeafletMap = ({
     return '#4ade80'; // Green
   };
 
-  // Filter unlisted roads to only those not in the main roads list
-  const filteredUnlisted = unlistedRoads.filter(ur => !roads.find(r => r.id === ur.id));
+  // Filter unlisted roads to only those not in the main roads list, memoized & capped for 60fps rendering
+  const filteredUnlisted = React.useMemo(() => {
+    const roadIds = new Set(roads.map(r => r.id));
+    return unlistedRoads
+      .filter(ur => !roadIds.has(ur.id))
+      .slice(0, 150); // Limit unlisted background lines to top 150 to keep Leaflet lightning fast
+  }, [unlistedRoads, roads]);
 
   return (
     <div className="w-full h-full relative bg-zinc-950">

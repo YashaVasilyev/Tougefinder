@@ -9,7 +9,7 @@ function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoaded, onAddToRoute, onRemoveFromRoute, isInRoute }) => {
+const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoaded, onAddToRoute, onRemoveFromRoute, isInRoute, onSetStartPoint, onSetEndPoint }) => {
   const [elevationData, setElevationData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isReversed, setIsReversed] = useState(false);
@@ -214,6 +214,26 @@ const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoad
                 : '"Real-world terms for easier reading on the fly."'}
             </p>
           </div>
+
+          {/* Corridor Selection Buttons */}
+          {onSetStartPoint && onSetEndPoint && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onSetStartPoint({ lat: road.coordinates[0][1], lon: road.coordinates[0][0], name: road.name })}
+                className="btn-secondary py-2 text-[10px] uppercase font-bold flex items-center justify-center gap-1.5 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 transition-all"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Set as Start
+              </button>
+              <button
+                onClick={() => onSetEndPoint({ lat: road.coordinates[road.coordinates.length - 1][1], lon: road.coordinates[road.coordinates.length - 1][0], name: road.name })}
+                className="btn-secondary py-2 text-[10px] uppercase font-bold flex items-center justify-center gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/30 transition-all"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                Set as End
+              </button>
+            </div>
+          )}
 
           {/* Navigate Button */}
           <div className="flex gap-2">

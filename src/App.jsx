@@ -5,7 +5,7 @@ import RoadList from './components/RoadList';
 import RoadDetail from './components/RoadDetail';
 import LocationSearch from './components/LocationSearch';
 import Terrain3D from './components/Terrain3D';
-import { fetchRoads } from './services/overpass';
+import { fetchRoads, fetchRoadsInBBox } from './services/overpass';
 import { calculateScores } from './services/scoring';
 import { getCachedRoads, saveToCache } from './services/cache';
 import * as turf from '@turf/turf';
@@ -35,6 +35,97 @@ function App() {
   const [routePlannerActive, setRoutePlannerActive] = useState(false);
   const [stitchedRoute, setStitchedRoute] = useState(null);
   const [stitchingLoading, setStitchingLoading] = useState(false);
+
+  // Corridor route planning states
+  const [routeStartPoint, setRouteStartPoint] = useState(null);
+  const [routeEndPoint, setRouteEndPoint] = useState(null);
+  const [mapClickMode, setMapClickMode] = useState('start'); // 'start' or 'end'
+
+  // Trigger corridor search when start or end points are set/changed
+  useEffect(() => {
+    if (!routeStartPoint || !routeEndPoint) return;
+
+    const searchCorridor = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const startPoint = turf.point([routeStartPoint.lon, routeStartPoint.lat]);
+        const endPoint = turf.point([routeEndPoint.lon, routeEndPoint.lat]);
+        
+        // Calculate point to point distance in km
+        const distanceKm = turf.distance(startPoint, endPoint, { units: 'kilometers' });
+        
+        // Calculate corridor radius in km: 15 + 0.1 * distance
+        const corridorRadiusKm = 15 + 0.1 * distanceKm;
+
+        const straightLine = turf.lineString([
+          [routeStartPoint.lon, routeStartPoint.lat],
+          [routeEndPoint.lon, routeEndPoint.lat]
+        ]);
+        
+        // Bounding box of the buffered line to query Overpass
+        const buffered = turf.buffer(straightLine, corridorRadiusKm, { units: 'kilometers' });
+        const bbox = turf.bbox(buffered); // [minLon, minLat, maxLon, maxLat]
+
+        // Fetch all roads in bounding box
+        const rawRoads = await fetchRoadsInBBox(bbox[1], bbox[0], bbox[3], bbox[2]);
+        if (!rawRoads) throw new Error("No data received");
+
+        // Filter ways: keep only those within corridorRadiusKm of the straightLine
+        const filteredRoads = rawRoads.filter(road => {
+          return road.coordinates.some(coord => {
+            const pt = turf.point(coord);
+            const dist = turf.pointToLineDistance(pt, straightLine, { units: 'kilometers' });
+            return dist <= corridorRadiusKm;
+          });
+        });
+
+        const thresholds = { minScore, minLength, maxHouseDensity };
+        const allScored = calculateScores(filteredRoads, { minScore: 0, minLength: 0, maxHouseDensity: 100 });
+        const scoredRoads = calculateScores(filteredRoads, thresholds);
+
+        setAllRoads(allScored || []);
+        setRoads(scoredRoads || []);
+        
+        // Center view between start and end
+        setLocation({
+          lat: (routeStartPoint.lat + routeEndPoint.lat) / 2,
+          lon: (routeStartPoint.lon + routeEndPoint.lon) / 2
+        });
+      } catch (err) {
+        console.error("Corridor scan failed:", err);
+        setError("Failed to fetch corridor segments. Please try different coordinates.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    searchCorridor();
+  }, [routeStartPoint, routeEndPoint]);
+
+  const handleMapClick = async (coords) => {
+    if (!routePlannerActive) return;
+
+    let name = `Location (${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)})`;
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.lat}&lon=${coords.lon}&zoom=14`);
+      if (res.ok) {
+        const data = await res.json();
+        name = data.display_name.split(',').slice(0, 2).join(',');
+      }
+    } catch (err) {
+      console.error("Reverse geocoding failed:", err);
+    }
+
+    const pointObj = { ...coords, name };
+
+    if (mapClickMode === 'start') {
+      setRouteStartPoint(pointObj);
+      setMapClickMode('end');
+    } else {
+      setRouteEndPoint(pointObj);
+    }
+  };
 
   const fetchOSRMRoute = async (coord1, coord2) => {
     try {
@@ -429,6 +520,9 @@ function App() {
             generatedTurns={generatedTurns}
             plannedRoute={stitchedRoute}
             plannedRouteWaypoints={routeWaypoints}
+            routeStartPoint={routeStartPoint}
+            routeEndPoint={routeEndPoint}
+            onMapClick={handleMapClick}
           />
         </div>
 
@@ -505,6 +599,96 @@ function App() {
                     <p className="text-[10px] text-zinc-400 leading-relaxed">
                       Chain multiple mountain passes together to construct a continuous planned drive. Click <b className="text-purple-300">+ Route</b> on any road's card to add it to your custom route sequence!
                     </p>
+                  </div>
+
+                  {/* Start / End corridor builder */}
+                  <div className="space-y-4 bg-zinc-900/40 p-4 rounded-2xl border border-white/5">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Corridor Bounds</h4>
+                      {(routeStartPoint || routeEndPoint) && (
+                        <button
+                          onClick={() => {
+                            setRouteStartPoint(null);
+                            setRouteEndPoint(null);
+                            setMapClickMode('start');
+                          }}
+                          className="text-[9px] font-bold text-rose-400 hover:underline uppercase transition-all"
+                        >
+                          Reset Points
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-2.5">
+                      {/* Start Point Input Card */}
+                      <div 
+                        onClick={() => setMapClickMode('start')}
+                        className={cn(
+                          "p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between",
+                          mapClickMode === 'start' 
+                            ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-300 animate-pulse-soft" 
+                            : "bg-zinc-950/50 border-white/5 hover:border-white/10 text-zinc-400"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-5 h-5 rounded-full bg-emerald-500 text-white font-mono text-[10px] font-extrabold flex items-center justify-center flex-shrink-0">S</span>
+                          <div className="truncate">
+                            <span className="text-[8px] font-bold uppercase block text-zinc-500">Start Location</span>
+                            <span className="text-xs font-bold truncate block">
+                              {routeStartPoint ? routeStartPoint.name : "Click map to assign start"}
+                            </span>
+                          </div>
+                        </div>
+                        {mapClickMode === 'start' && <span className="text-[8px] font-bold uppercase tracking-wider bg-emerald-500/25 px-1.5 py-0.5 rounded-md">Active</span>}
+                      </div>
+
+                      {/* End Point Input Card */}
+                      <div 
+                        onClick={() => setMapClickMode('end')}
+                        className={cn(
+                          "p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between",
+                          mapClickMode === 'end' 
+                            ? "bg-rose-950/20 border-rose-500/30 text-rose-300 animate-pulse-soft" 
+                            : "bg-zinc-950/50 border-white/5 hover:border-white/10 text-zinc-400"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-5 h-5 rounded-full bg-rose-500 text-white font-mono text-[10px] font-extrabold flex items-center justify-center flex-shrink-0">E</span>
+                          <div className="truncate">
+                            <span className="text-[8px] font-bold uppercase block text-zinc-500">End Location</span>
+                            <span className="text-xs font-bold truncate block">
+                              {routeEndPoint ? routeEndPoint.name : "Click map to assign end"}
+                            </span>
+                          </div>
+                        </div>
+                        {mapClickMode === 'end' && <span className="text-[8px] font-bold uppercase tracking-wider bg-rose-500/25 px-1.5 py-0.5 rounded-md">Active</span>}
+                      </div>
+                    </div>
+
+                    {/* Calculated Corridor Radius Display */}
+                    {(() => {
+                      if (!routeStartPoint || !routeEndPoint) return null;
+                      const startPoint = turf.point([routeStartPoint.lon, routeStartPoint.lat]);
+                      const endPoint = turf.point([routeEndPoint.lon, routeEndPoint.lat]);
+                      const distanceKm = turf.distance(startPoint, endPoint, { units: 'kilometers' });
+                      const corridorRadiusKm = 15 + 0.1 * distanceKm;
+
+                      return (
+                        <div className="pt-2 border-t border-white/5 space-y-1.5">
+                          <div className="flex justify-between text-[10px] text-zinc-400 font-mono">
+                            <span>Axis distance:</span>
+                            <span className="font-bold text-white">{(distanceKm * 0.621371).toFixed(1)} miles ({distanceKm.toFixed(1)} km)</span>
+                          </div>
+                          <div className="flex justify-between text-[10px] text-zinc-400 font-mono">
+                            <span>Corridor buffer:</span>
+                            <span className="font-bold text-purple-300">{(corridorRadiusKm * 0.621371).toFixed(1)} miles ({corridorRadiusKm.toFixed(1)} km)</span>
+                          </div>
+                          <p className="text-[9px] text-zinc-500 italic mt-1 leading-normal">
+                            All passes within buffer are gathered automatically. Click any pass on the map to add it between your Start and End targets.
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Waypoint List */}
@@ -686,6 +870,14 @@ function App() {
           onAddToRoute={handleAddToRoute}
           onRemoveFromRoute={handleRemoveFromRoute}
           isInRoute={routeWaypoints.some(r => r.id === selectedRoad.id)}
+          onSetStartPoint={(pt) => {
+            setRouteStartPoint(pt);
+            setRoutePlannerActive(true);
+          }}
+          onSetEndPoint={(pt) => {
+            setRouteEndPoint(pt);
+            setRoutePlannerActive(true);
+          }}
         />
       )}
 

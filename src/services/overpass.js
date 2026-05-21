@@ -177,3 +177,25 @@ const countStopSigns = (nodes, stopSigns) => {
   }
   return count;
 };
+
+export const fetchRoadsInBBox = async (minLat, minLon, maxLat, maxLon) => {
+  const query = `[out:json][timeout:25];(way(${minLat},${minLon},${maxLat},${maxLon})[highway~"^(tertiary|unclassified|secondary|primary)$"];node(${minLat},${minLon},${maxLat},${maxLon})[highway=stop];);out body;>;out skel qt;`;
+  const url = `/api/overpass?data=${encodeURIComponent(query)}`;
+
+  try {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Proxy returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data || !data.elements) throw new Error('Invalid data format received');
+    
+    return processOverpassData(data);
+  } catch (error) {
+    console.error('Overpass fetch in bbox failed:', error);
+    throw error;
+  }
+};

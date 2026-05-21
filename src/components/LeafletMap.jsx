@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Polyline, useMap, ZoomControl, Marker, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, useMap, useMapEvents, ZoomControl, Marker, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import '../utils/SmoothWheelZoom';
@@ -15,6 +15,16 @@ let DefaultIcon = L.icon({
     iconAnchor: [12, 41]
 });
 L.Marker.prototype.options.icon = DefaultIcon;
+
+// Click handler for map events
+const MapClickHandler = ({ onClick }) => {
+  useMapEvents({
+    click: (e) => {
+      if (onClick) onClick({ lat: e.latlng.lat, lon: e.latlng.lng });
+    }
+  });
+  return null;
+};
 
 // Helper to update map view
 const ChangeView = ({ center, zoom, bounds }) => {
@@ -45,7 +55,19 @@ const ChangeView = ({ center, zoom, bounds }) => {
   return null;
 };
 
-const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, center, generatedTurns = [], plannedRoute, plannedRouteWaypoints }) => {
+const LeafletMap = ({ 
+  roads, 
+  unlistedRoads = [], 
+  selectedRoad, 
+  onSelectRoad, 
+  center, 
+  generatedTurns = [], 
+  plannedRoute, 
+  plannedRouteWaypoints,
+  routeStartPoint,
+  routeEndPoint,
+  onMapClick
+}) => {
   const [zoom, setZoom] = useState(13);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -162,6 +184,56 @@ const LeafletMap = ({ roads, unlistedRoads = [], selectedRoad, onSelectRoad, cen
             </Tooltip>
           </Marker>
         ))}
+
+        {routeStartPoint && (
+          <Marker 
+            position={[routeStartPoint.lat, routeStartPoint.lon]}
+            icon={L.divIcon({
+              className: 'custom-start-marker',
+              html: `<div class="w-5 h-5 bg-emerald-500 rounded-full border-[3px] border-white shadow-2xl flex items-center justify-center text-[10px] font-black text-white select-none">S</div>`,
+              iconSize: [20, 20],
+              iconAnchor: [10, 10]
+            })}
+          >
+            <Tooltip permanent direction="top" className="bg-emerald-950/95 text-emerald-200 border border-emerald-500/30 font-bold px-2 py-0.5 text-[9px] uppercase rounded shadow-lg">
+              Start: {routeStartPoint.name || 'Custom Location'}
+            </Tooltip>
+          </Marker>
+        )}
+
+        {routeEndPoint && (
+          <Marker 
+            position={[routeEndPoint.lat, routeEndPoint.lon]}
+            icon={L.divIcon({
+              className: 'custom-end-marker',
+              html: `<div class="w-5 h-5 bg-rose-500 rounded-full border-[3px] border-white shadow-2xl flex items-center justify-center text-[10px] font-black text-white select-none">E</div>`,
+              iconSize: [20, 20],
+              iconAnchor: [10, 10]
+            })}
+          >
+            <Tooltip permanent direction="top" className="bg-rose-950/95 text-rose-200 border border-rose-500/30 font-bold px-2 py-0.5 text-[9px] uppercase rounded shadow-lg">
+              End: {routeEndPoint.name || 'Custom Location'}
+            </Tooltip>
+          </Marker>
+        )}
+
+        {routeStartPoint && routeEndPoint && (
+          <Polyline 
+            positions={[
+              [routeStartPoint.lat, routeStartPoint.lon],
+              [routeEndPoint.lat, routeEndPoint.lon]
+            ]}
+            pathOptions={{
+              color: '#38bdf8', // Light blue corridor axis
+              weight: 3,
+              opacity: 0.6,
+              dashArray: '5, 10',
+              lineJoin: 'round'
+            }}
+          />
+        )}
+
+        <MapClickHandler onClick={onMapClick} />
       </MapContainer>
 
       {/* Legend */}

@@ -64,11 +64,17 @@ const RoadDetail = ({ road, onClose, onNotesGenerated, onShow3D, onElevationLoad
         <div className="px-6 pt-5 pb-3 flex justify-between items-start flex-shrink-0">
           <div className="flex-1 min-w-0 pr-3">
             <h2 className="text-xl font-bold tracking-tight truncate">{road.name}</h2>
-            <div className="flex gap-2 items-center mt-1">
+            <div className="flex flex-wrap gap-2 items-center mt-1">
               <span className="px-2.5 py-0.5 bg-touge-600 rounded-full text-xs font-bold uppercase tracking-widest">
                 Score {road.totalScore}
               </span>
               <span className="text-zinc-400 text-xs font-medium capitalize">{road.type}</span>
+              {road.hasVariableSpeedLimit && (
+                <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+                  Variable Limit (+15)
+                </span>
+              )}
             </div>
           </div>
           <button

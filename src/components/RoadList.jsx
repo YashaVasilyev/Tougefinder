@@ -40,9 +40,14 @@ const RoadList = ({ roads, loading, onSelectRoad, selectedRoad }) => {
         >
           <div className="flex justify-between items-start mb-4">
             <div className="flex-1">
-              <h3 className="text-lg font-bold line-clamp-1 group-hover:text-touge-400 transition-colors">
-                {road.name}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-bold line-clamp-1 group-hover:text-touge-400 transition-colors">
+                  {road.name}
+                </h3>
+                {road.hasVariableSpeedLimit && (
+                  <span className="flex-shrink-0 w-2 h-2 rounded-full bg-purple-400 animate-pulse" title="Variable Speed Limit (+15 Boost)" />
+                )}
+              </div>
               <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider">
                 {road.type} • {road.lengthMiles} miles
               </p>

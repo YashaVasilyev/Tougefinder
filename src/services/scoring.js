@@ -69,7 +69,17 @@ export const calculateScores = (roads, thresholds = {}) => {
     const featuresPerMile = (road.intersections + (road.stopSigns * 2)) / lengthMiles;
     const flowScore = Math.max(0, 40 - (featuresPerMile * 15));
 
-    const totalScore = Math.round(curvatureScore + flowScore);
+    // --- VARIABLE SPEED LIMIT BOOST (+15 pts) ---
+    // Boost roads that have variable speed limits (tagged in OSM as maxspeed=variable, maxspeed:type=variable, etc.)
+    const maxspeed = road.tags?.maxspeed;
+    const hasVariableSpeedLimit = 
+      maxspeed === 'variable' || 
+      road.tags?.['maxspeed:type'] === 'variable' || 
+      road.tags?.['maxspeed:variable'] === 'yes' || 
+      road.tags?.['variable_speed_limit'] === 'yes';
+      
+    const speedLimitBoost = hasVariableSpeedLimit ? 15 : 0;
+    const totalScore = Math.min(100, Math.round(curvatureScore + flowScore) + speedLimitBoost);
 
     if (totalScore < minScore) return null;
 
@@ -83,7 +93,9 @@ export const calculateScores = (roads, thresholds = {}) => {
       maxIntensity: Math.round(maxCurvatureIntensity),
       lineString: line,
       elevationScore: 0,
-      trafficScore: Math.round(flowScore)
+      trafficScore: Math.round(flowScore),
+      hasVariableSpeedLimit,
+      speedLimitBoost
     };
   }).filter(r => r !== null).sort((a, b) => b.totalScore - a.totalScore);
 };
